@@ -154,7 +154,7 @@ def extract_text(
     else:
         document = {"type": "document_url", "document_url": data_url}
 
-    payload = {"document": document, "output_format": output_format, "model": model}
+    payload = {"document": document, "model": model}
     if language:
         payload["language"] = language
 
@@ -177,11 +177,33 @@ def extract_text(
         raise OCRException(f"API error: {resp.status_code} {body}")
 
     payload = resp.json()
-    text = payload.get("text", "")
-    usage = payload.get("usage", {}) or {}
-    tokens = usage.get("total_tokens", 0)
+    pages = payload.get("pages")
+    if pages and isinstance(pages, list):
+        markdown = "\n\n".join(
+            str(page.get("markdown", "")) for page in pages if isinstance(page, dict)
+        )
+    else:
+        markdown = payload.get("text", "")
+
+    if output_format == "json":
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+    elif output_format == "text":
+        import re
+
+        plain = markdown
+        plain = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", plain)
+        plain = re.sub(r"\[[^\]]*\]\([^)]*\)", "", plain)
+        plain = re.sub(r"[`*_>#-]", "", plain)
+        text = plain
+    else:
+        text = markdown
+
+    usage = payload.get("usage", {}) or payload.get("usage_info", {}) or {}
+    tokens = usage.get("total_tokens") or usage.get("pages_processed", 0)
+    if tokens is None:
+        tokens = 0
     cost = payload.get("cost", 0.0)
-    return text, tokens, cost
+    return text, int(tokens), float(cost)
 
 
 # ----------------------------- CLI ---------------------------------------

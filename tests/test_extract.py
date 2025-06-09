@@ -22,8 +22,20 @@ def test_extract_text_payload(monkeypatch, tmp_path):
 
     class Resp:
         status_code = 200
+
         def json(self):
-            return {"text": "t", "usage": {"total_tokens": 1}, "cost": 0.0}
+            return {
+                "pages": [
+                    {
+                        "index": 0,
+                        "markdown": "t",
+                        "images": [],
+                        "dimensions": None,
+                    }
+                ],
+                "model": mod.DEFAULT_MODEL,
+                "usage_info": {"pages_processed": 1},
+            }
 
     def fake_post(url, headers=None, json=None, timeout=60):
         captured['payload'] = json

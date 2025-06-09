@@ -12,7 +12,7 @@ python mistral-ocr.py [OPTIONS] PATTERN [PATTERN ...]
 Common options:
 
 - `--api-key` – provide the API key (otherwise read from config or prompted).
-- `--output-format` – `markdown` (default), `text` or `json`.
+- `--output-format` – output file format: `markdown` (default), `text`, or `json`.
 - `--language` – optional language hint.
 - `--model` – OCR model to use (defaults to `mistral-ocr-latest`).
 - `--config-path` – path to configuration file (defaults to `~/.mistral_ocr.cfg`).
