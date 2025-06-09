@@ -89,9 +89,10 @@ class OCRException(Exception):
 
 
 def _scrub_files(data: object) -> None:
-    """Recursively remove any 'file' keys from *data* if it's a mapping."""
+    """Recursively remove encoded file contents from *data*."""
     if isinstance(data, dict):
-        data.pop("file", None)
+        for key in ["file", "document_url", "image_url"]:
+            data.pop(key, None)
         for value in data.values():
             _scrub_files(value)
     elif isinstance(data, list):
@@ -128,7 +129,18 @@ def extract_text(
     with open(file_path, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
-    payload = {"file": encoded, "output_format": output_format}
+
+        mime, _ = mimetypes.guess_type(file_path)
+    if mime is None:
+        mime = "application/octet-stream"
+
+    data_url = f"data:{mime};base64,{encoded}"
+    if mime.startswith("image/"):
+        document = {"type": "image_url", "image_url": {"url": data_url}}
+    else:
+        document = {"type": "document_url", "document_url": data_url}
+
+    payload = {"document": document, "output_format": output_format}
     if language:
         payload["language"] = language
 

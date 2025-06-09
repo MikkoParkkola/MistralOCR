@@ -32,8 +32,9 @@ def test_extract_text_payload(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.requests, 'post', fake_post)
     mod.extract_text(file, 'k')
     doc = captured['payload']['document']
-    assert doc['file'] == base64.b64encode(data).decode()
-    assert doc['mime_type'] == 'application/pdf'
+    assert doc['type'] == 'document_url'
+    assert doc['document_url'].startswith('data:application/pdf;base64,')
+    assert doc['document_url'].endswith(base64.b64encode(data).decode())
 
 
 def test_extract_text_error_truncated(monkeypatch, tmp_path):
@@ -43,7 +44,10 @@ def test_extract_text_error_truncated(monkeypatch, tmp_path):
 
     payload = {
         "error": "bad",
-        "document": {"file": encoded, "mime_type": "application/pdf"},
+        "document": {
+            "type": "document_url",
+            "document_url": f"data:application/pdf;base64,{encoded}",
+        },
     }
 
     class Resp:
@@ -72,7 +76,10 @@ def test_extract_text_error_nested(monkeypatch, tmp_path):
                 "type": "missing",
                 "loc": ["body", "document"],
                 "msg": "Field required",
-                "input": {"file": encoded},
+                "input": {
+                    "type": "document_url",
+                    "document_url": f"data:application/pdf;base64,{encoded}",
+                },
             }
         ]
     }
