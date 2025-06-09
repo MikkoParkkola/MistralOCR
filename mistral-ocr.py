@@ -11,7 +11,7 @@ import base64
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
-
+import mimetypes
 import requests
 
 
@@ -98,7 +98,14 @@ def extract_text(
     with open(file_path, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
-    payload = {"document": encoded, "output_format": output_format}
+    mime, _ = mimetypes.guess_type(file_path)
+    if mime is None:
+        mime = "application/octet-stream"
+
+    payload = {
+        "document": {"type": "file", "file": encoded, "mime_type": mime},
+        "output_format": output_format,
+    }
     if language:
         payload["language"] = language
 

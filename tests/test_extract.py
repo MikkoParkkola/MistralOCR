@@ -29,4 +29,6 @@ def test_extract_text_payload(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mod.requests, 'post', fake_post)
     mod.extract_text(file, 'k')
-    assert base64.b64encode(data).decode() == captured['payload']['document']
+    doc = captured['payload']['document']
+    assert doc['file'] == base64.b64encode(data).decode()
+    assert doc['mime_type'] == 'application/pdf'
