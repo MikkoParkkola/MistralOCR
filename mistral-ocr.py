@@ -98,7 +98,7 @@ def extract_text(
     with open(file_path, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
-    payload = {"file": encoded, "output_format": output_format}
+    payload = {"document": encoded, "output_format": output_format}
     if language:
         payload["language"] = language
 
