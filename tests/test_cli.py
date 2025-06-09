@@ -20,6 +20,12 @@ def test_parse_args():
     assert ns.output_format == "text"
 
 
+def test_parse_args_default(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["prog", "file.pdf"])
+    ns = parse_args(None)
+    assert ns.patterns == ["file.pdf"]
+
+
 def test_main_success(tmp_path: Path, monkeypatch):
     # create dummy file
     file = tmp_path / "doc.pdf"

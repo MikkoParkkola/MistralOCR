@@ -126,7 +126,7 @@ class ColorFormatter(logging.Formatter):
         return f"{color}{message}{reset}"
 
 
-def parse_args(args: List[str]) -> argparse.Namespace:
+def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process documents with Mistral OCR")
     parser.add_argument("patterns", nargs="+", help="Input file patterns (e.g. *.pdf)")
     parser.add_argument("--api-key", help="Mistral API key")
@@ -145,8 +145,7 @@ def setup_logging(level: str) -> None:
 
 
 def main(argv: List[str] | None = None) -> int:
-    args = parse_args(argv or [])
-
+    args = parse_args(argv)
     config_path = Path(args.config_path)
     ensure_config_template(config_path)
     config = load_config(config_path)
