@@ -57,3 +57,32 @@ def test_extract_text_error_truncated(monkeypatch, tmp_path):
     with pytest.raises(mod.OCRException) as exc:
         mod.extract_text(file, "k")
     assert encoded not in str(exc.value)
+
+
+def test_extract_text_error_nested(monkeypatch, tmp_path):
+    file = tmp_path / "doc.pdf"
+    file.write_bytes(b"data")
+    encoded = base64.b64encode(b"data").decode()
+
+    payload = {
+        "detail": [
+            {
+                "type": "missing",
+                "loc": ["body", "document"],
+                "msg": "Field required",
+                "input": {"file": encoded},
+            }
+        ]
+    }
+
+    class Resp:
+        status_code = 422
+        text = json.dumps(payload)
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr(mod.requests, "post", lambda *a, **kw: Resp())
+    with pytest.raises(mod.OCRException) as exc:
+        mod.extract_text(file, "k")
+    assert encoded not in str(exc.value)

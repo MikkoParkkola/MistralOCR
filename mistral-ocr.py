@@ -88,6 +88,17 @@ class OCRException(Exception):
     """Raised when the OCR API returns an error."""
 
 
+def _scrub_files(data: object) -> None:
+    """Recursively remove any 'file' keys from *data* if it's a mapping."""
+    if isinstance(data, dict):
+        data.pop("file", None)
+        for value in data.values():
+            _scrub_files(value)
+    elif isinstance(data, list):
+        for item in data:
+            _scrub_files(item)
+
+
 def extract_text(
     file_path: Path,
     api_key: str,
@@ -112,11 +123,8 @@ def extract_text(
         body = resp.text
         try:
             data = resp.json()
-            if isinstance(data, dict):
-                doc = data.get("document")
-                if isinstance(doc, dict):
-                    doc.pop("file", None)
-                body = json.dumps(data)
+            _scrub_files(data)
+            body = json.dumps(data)
         except Exception:
             pass
         if len(body) > 1000:
