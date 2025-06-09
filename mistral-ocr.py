@@ -9,6 +9,7 @@ from getpass import getpass
 import glob
 import base64
 import logging
+import json
 from pathlib import Path
 from typing import List, Optional, Tuple
 import mimetypes
@@ -19,11 +20,14 @@ import requests
 
 CONFIG_PATH = Path.home() / ".mistral_ocr.cfg"
 
+DEFAULT_MODEL = "mistral-ocr-latest"
+
 CONFIG_TEMPLATE = {
     "api_key": "",
     "output_format": "markdown",
     "language": "",
     "log_level": "INFO",
+    "model": DEFAULT_MODEL,
 }
 
 
@@ -33,6 +37,7 @@ class Config:
     output_format: str = "markdown"
     language: str = ""
     log_level: str = "INFO"
+    model: str = DEFAULT_MODEL
 
     @classmethod
     def from_parser(cls, parser: configparser.ConfigParser) -> "Config":
@@ -50,6 +55,7 @@ class Config:
             "output_format": self.output_format,
             "language": self.language,
             "log_level": self.log_level,
+            "model": self.model,
         }
         return parser
 
@@ -87,11 +93,50 @@ class OCRException(Exception):
     """Raised when the OCR API returns an error."""
 
 
+def _scrub_files(data: object) -> None:
+    """Recursively remove encoded file contents from *data*."""
+    if isinstance(data, dict):
+        for key in ["file", "document_url", "image_url"]:
+            data.pop(key, None)
+        for value in data.values():
+            _scrub_files(value)
+    elif isinstance(data, list):
+        for item in data:
+            _scrub_files(item)
+
+
+def _summarize_error(data: object) -> str:
+    """Return a short summary for an OCR error payload."""
+
+    def from_detail(detail: list) -> str:
+        parts: list[str] = []
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            msg = item.get("msg")
+            loc = item.get("loc")
+            loc_str = "".join([str(x) + "." for x in loc])[:-1] if isinstance(loc, list) else ""
+            if msg and loc_str:
+                parts.append(f"{loc_str}: {msg}")
+            elif msg:
+                parts.append(str(msg))
+        return "; ".join(parts)
+
+    if isinstance(data, dict):
+        if isinstance(data.get("detail"), list):
+            return from_detail(data["detail"])
+        message = data.get("message")
+        if isinstance(message, dict) and isinstance(message.get("detail"), list):
+            return from_detail(message["detail"])
+    return ""
+
+
 def extract_text(
     file_path: Path,
     api_key: str,
     output_format: str = "markdown",
     language: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -102,10 +147,13 @@ def extract_text(
     if mime is None:
         mime = "application/octet-stream"
 
-    payload = {
-        "document": {"type": "file", "file": encoded, "mime_type": mime},
-        "output_format": output_format,
-    }
+    data_url = f"data:{mime};base64,{encoded}"
+    if mime.startswith("image/"):
+        document = {"type": "image_url", "image_url": {"url": data_url}}
+    else:
+        document = {"type": "document_url", "document_url": data_url}
+
+    payload = {"document": document, "output_format": output_format, "model": model}
     if language:
         payload["language"] = language
 
@@ -115,7 +163,17 @@ def extract_text(
         raise OCRException(f"Network error: {exc}") from exc
 
     if resp.status_code != 200:
-        raise OCRException(f"API error: {resp.status_code} {resp.text}")
+        body = resp.text
+        try:
+            data = resp.json()
+            _scrub_files(data)
+            summary = _summarize_error(data)
+            body = summary or json.dumps(data)
+        except Exception:
+            pass
+        if len(body) > 1000:
+            body = body[:1000] + "... [truncated]"
+        raise OCRException(f"API error: {resp.status_code} {body}")
 
     payload = resp.json()
     text = payload.get("text", "")
@@ -149,6 +207,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--api-key", help="Mistral API key")
     parser.add_argument("--output-format", default=None, help="Output format, default from config")
     parser.add_argument("--language", default=None, help="Language hint")
+    parser.add_argument("--model", default=None, help="Model name to use")
     parser.add_argument("--config-path", default=str(CONFIG_PATH), help="Path to configuration file")
     parser.add_argument("--log-level", default=None, help="Logging level")
     return parser.parse_args(args)
@@ -172,6 +231,8 @@ def main(argv: List[str] | None = None) -> int:
         config.output_format = args.output_format
     if args.language:
         config.language = args.language
+    if args.model:
+        config.model = args.model
     if args.log_level:
         config.log_level = args.log_level
 
@@ -211,6 +272,7 @@ def main(argv: List[str] | None = None) -> int:
                 api_key,
                 output_format=config.output_format,
                 language=config.language,
+                model=config.model,
             )
         except OCRException as exc:
             logging.error("Failed to process %s: %s", file_path, exc)
