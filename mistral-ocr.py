@@ -20,7 +20,7 @@ import requests
 
 CONFIG_PATH = Path.home() / ".mistral_ocr.cfg"
 
-DEFAULT_MODEL = "mistral-ocr"
+DEFAULT_MODEL = "mistral-ocr-latest"
 
 CONFIG_TEMPLATE = {
     "api_key": "",
