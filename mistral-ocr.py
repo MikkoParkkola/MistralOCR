@@ -107,9 +107,10 @@ def _scrub_files(data: object) -> None:
 
 def _summarize_error(data: object) -> str:
     """Return a short summary for an OCR error payload."""
-    if isinstance(data, dict) and isinstance(data.get("detail"), list):
-        parts = []
-        for item in data["detail"]:
+
+    def from_detail(detail: list) -> str:
+        parts: list[str] = []
+        for item in detail:
             if not isinstance(item, dict):
                 continue
             msg = item.get("msg")
@@ -120,6 +121,13 @@ def _summarize_error(data: object) -> str:
             elif msg:
                 parts.append(str(msg))
         return "; ".join(parts)
+
+    if isinstance(data, dict):
+        if isinstance(data.get("detail"), list):
+            return from_detail(data["detail"])
+        message = data.get("message")
+        if isinstance(message, dict) and isinstance(message.get("detail"), list):
+            return from_detail(message["detail"])
     return ""
 
 

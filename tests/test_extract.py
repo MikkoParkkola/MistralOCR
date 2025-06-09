@@ -98,3 +98,39 @@ def test_extract_text_error_nested(monkeypatch, tmp_path):
     msg = str(exc.value)
     assert encoded not in msg
     assert "body.document: Field required" in msg
+
+
+def test_extract_text_error_message_detail(monkeypatch, tmp_path):
+    file = tmp_path / "doc.pdf"
+    file.write_bytes(b"data")
+    encoded = base64.b64encode(b"data").decode()
+
+    payload = {
+        "object": "error",
+        "message": {
+            "detail": [
+                {
+                    "type": "missing",
+                    "loc": ["body", "document"],
+                    "msg": "Field required",
+                    "input": {
+                        "document_url": f"data:application/pdf;base64,{encoded}"
+                    },
+                }
+            ]
+        },
+    }
+
+    class Resp:
+        status_code = 422
+        text = json.dumps(payload)
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr(mod.requests, "post", lambda *a, **kw: Resp())
+    with pytest.raises(mod.OCRException) as exc:
+        mod.extract_text(file, "k")
+    msg = str(exc.value)
+    assert encoded not in msg
+    assert "body.document: Field required" in msg
