@@ -56,7 +56,9 @@ def test_extract_text_error_truncated(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.requests, "post", lambda *a, **kw: Resp())
     with pytest.raises(mod.OCRException) as exc:
         mod.extract_text(file, "k")
-    assert encoded not in str(exc.value)
+    msg = str(exc.value)
+    assert encoded not in msg
+    assert msg.startswith("API error: 400")
 
 
 def test_extract_text_error_nested(monkeypatch, tmp_path):
@@ -85,4 +87,6 @@ def test_extract_text_error_nested(monkeypatch, tmp_path):
     monkeypatch.setattr(mod.requests, "post", lambda *a, **kw: Resp())
     with pytest.raises(mod.OCRException) as exc:
         mod.extract_text(file, "k")
-    assert encoded not in str(exc.value)
+    msg = str(exc.value)
+    assert encoded not in msg
+    assert "body.document: Field required" in msg
