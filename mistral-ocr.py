@@ -9,9 +9,10 @@ from getpass import getpass
 import glob
 import base64
 import logging
+import json
 from pathlib import Path
 from typing import List, Optional, Tuple
-
+import mimetypes
 import requests
 
 
@@ -108,7 +109,19 @@ def extract_text(
         raise OCRException(f"Network error: {exc}") from exc
 
     if resp.status_code != 200:
-        raise OCRException(f"API error: {resp.status_code} {resp.text}")
+        body = resp.text
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                doc = data.get("document")
+                if isinstance(doc, dict):
+                    doc.pop("file", None)
+                body = json.dumps(data)
+        except Exception:
+            pass
+        if len(body) > 1000:
+            body = body[:1000] + "... [truncated]"
+        raise OCRException(f"API error: {resp.status_code} {body}")
 
     payload = resp.json()
     text = payload.get("text", "")
@@ -156,6 +169,7 @@ def setup_logging(level: str) -> None:
 
 def main(argv: List[str] | None = None) -> int:
     args = parse_args(argv)
+
     config_path = Path(args.config_path)
     ensure_config_template(config_path)
     config = load_config(config_path)
