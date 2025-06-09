@@ -1,8 +1,10 @@
 import base64
+import json
 from pathlib import Path
 import importlib.util
 import types
 import sys
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "mistral-ocr.py"
 spec = importlib.util.spec_from_file_location("mocr", MODULE_PATH)
@@ -32,3 +34,26 @@ def test_extract_text_payload(monkeypatch, tmp_path):
     doc = captured['payload']['document']
     assert doc['file'] == base64.b64encode(data).decode()
     assert doc['mime_type'] == 'application/pdf'
+
+
+def test_extract_text_error_truncated(monkeypatch, tmp_path):
+    file = tmp_path / "doc.pdf"
+    file.write_bytes(b"data")
+    encoded = base64.b64encode(b"data").decode()
+
+    payload = {
+        "error": "bad",
+        "document": {"file": encoded, "mime_type": "application/pdf"},
+    }
+
+    class Resp:
+        status_code = 400
+        text = json.dumps(payload)
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr(mod.requests, "post", lambda *a, **kw: Resp())
+    with pytest.raises(mod.OCRException) as exc:
+        mod.extract_text(file, "k")
+    assert encoded not in str(exc.value)
