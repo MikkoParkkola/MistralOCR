@@ -35,6 +35,7 @@ def test_extract_text_payload(monkeypatch, tmp_path):
     assert doc['type'] == 'document_url'
     assert doc['document_url'].startswith('data:application/pdf;base64,')
     assert doc['document_url'].endswith(base64.b64encode(data).decode())
+    assert captured['payload']['model'] == mod.DEFAULT_MODEL
 
 
 def test_extract_text_error_truncated(monkeypatch, tmp_path):

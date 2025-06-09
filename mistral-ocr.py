@@ -20,11 +20,14 @@ import requests
 
 CONFIG_PATH = Path.home() / ".mistral_ocr.cfg"
 
+DEFAULT_MODEL = "mistral-ocr"
+
 CONFIG_TEMPLATE = {
     "api_key": "",
     "output_format": "markdown",
     "language": "",
     "log_level": "INFO",
+    "model": DEFAULT_MODEL,
 }
 
 
@@ -34,6 +37,7 @@ class Config:
     output_format: str = "markdown"
     language: str = ""
     log_level: str = "INFO"
+    model: str = DEFAULT_MODEL
 
     @classmethod
     def from_parser(cls, parser: configparser.ConfigParser) -> "Config":
@@ -51,6 +55,7 @@ class Config:
             "output_format": self.output_format,
             "language": self.language,
             "log_level": self.log_level,
+            "model": self.model,
         }
         return parser
 
@@ -123,6 +128,7 @@ def extract_text(
     api_key: str,
     output_format: str = "markdown",
     language: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -140,7 +146,7 @@ def extract_text(
     else:
         document = {"type": "document_url", "document_url": data_url}
 
-    payload = {"document": document, "output_format": output_format}
+    payload = {"document": document, "output_format": output_format, "model": model}
     if language:
         payload["language"] = language
 
@@ -194,6 +200,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--api-key", help="Mistral API key")
     parser.add_argument("--output-format", default=None, help="Output format, default from config")
     parser.add_argument("--language", default=None, help="Language hint")
+    parser.add_argument("--model", default=None, help="Model name to use")
     parser.add_argument("--config-path", default=str(CONFIG_PATH), help="Path to configuration file")
     parser.add_argument("--log-level", default=None, help="Logging level")
     return parser.parse_args(args)
@@ -217,6 +224,8 @@ def main(argv: List[str] | None = None) -> int:
         config.output_format = args.output_format
     if args.language:
         config.language = args.language
+    if args.model:
+        config.model = args.model
     if args.log_level:
         config.log_level = args.log_level
 
@@ -256,6 +265,7 @@ def main(argv: List[str] | None = None) -> int:
                 api_key,
                 output_format=config.output_format,
                 language=config.language,
+                model=config.model,
             )
         except OCRException as exc:
             logging.error("Failed to process %s: %s", file_path, exc)
