@@ -7,6 +7,7 @@ import configparser
 from dataclasses import dataclass
 from getpass import getpass
 import glob
+import base64
 import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -35,9 +36,11 @@ class Config:
 
     @classmethod
     def from_parser(cls, parser: configparser.ConfigParser) -> "Config":
-        defaults = {k: v for k, v in CONFIG_TEMPLATE.items()}
+        defaults = CONFIG_TEMPLATE.copy()
         if parser.has_section("mistral"):
-            defaults.update(parser["mistral"])
+            for key, value in parser["mistral"].items():
+                if value:
+                    defaults[key] = value
         return cls(**defaults)
 
     def to_parser(self) -> configparser.ConfigParser:
@@ -69,7 +72,10 @@ def save_config(config: Config, path: Path = CONFIG_PATH) -> None:
 def ensure_config_template(path: Path = CONFIG_PATH) -> None:
     """Create a template configuration file if one doesn't exist."""
     if not path.exists():
-        save_config(Config(), path)
+        parser = configparser.ConfigParser()
+        parser["mistral"] = {k: "" for k in CONFIG_TEMPLATE}
+        with open(path, "w", encoding="utf-8") as fh:
+            parser.write(fh)
 
 
 # ----------------------------- OCR API -----------------------------------
@@ -89,13 +95,17 @@ def extract_text(
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
     headers = {"Authorization": f"Bearer {api_key}"}
-    data = {"output_format": output_format}
-    if language:
-        data["language"] = language
-
     with open(file_path, "rb") as fh:
-        files = {"file": fh}
-        resp = requests.post(API_URL, headers=headers, data=data, files=files, timeout=60)
+        encoded = base64.b64encode(fh.read()).decode()
+
+    payload = {"file": encoded, "output_format": output_format}
+    if language:
+        payload["language"] = language
+
+    try:
+        resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+    except requests.RequestException as exc:  # pragma: no cover - network issues
+        raise OCRException(f"Network error: {exc}") from exc
 
     if resp.status_code != 200:
         raise OCRException(f"API error: {resp.status_code} {resp.text}")
@@ -146,6 +156,7 @@ def setup_logging(level: str) -> None:
 
 def main(argv: List[str] | None = None) -> int:
     args = parse_args(argv)
+
     config_path = Path(args.config_path)
     ensure_config_template(config_path)
     config = load_config(config_path)
@@ -195,11 +206,17 @@ def main(argv: List[str] | None = None) -> int:
                 language=config.language,
             )
         except OCRException as exc:
-            logging.error(str(exc))
-            continue
+            logging.error("Failed to process %s: %s", file_path, exc)
+            logging.error(
+                "Stopping due to the error above. Verify the file is valid and your API key is correct."
+            )
+            return 1
         except Exception as exc:  # pragma: no cover - unexpected errors
-            logging.exception("Unexpected error: %s", exc)
-            continue
+            logging.exception(
+                "Unexpected error while processing %s: %s", file_path, exc
+            )
+            logging.error("Stopping due to unexpected error.")
+            return 1
 
         out_ext = {
             "markdown": ".md",
