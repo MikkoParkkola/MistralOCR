@@ -9,6 +9,7 @@ from getpass import getpass
 import glob
 import base64
 import logging
+import json
 from pathlib import Path
 from typing import List, Optional, Tuple
 import mimetypes
@@ -87,6 +88,35 @@ class OCRException(Exception):
     """Raised when the OCR API returns an error."""
 
 
+def _scrub_files(data: object) -> None:
+    """Recursively remove any 'file' keys from *data* if it's a mapping."""
+    if isinstance(data, dict):
+        data.pop("file", None)
+        for value in data.values():
+            _scrub_files(value)
+    elif isinstance(data, list):
+        for item in data:
+            _scrub_files(item)
+
+
+def _summarize_error(data: object) -> str:
+    """Return a short summary for an OCR error payload."""
+    if isinstance(data, dict) and isinstance(data.get("detail"), list):
+        parts = []
+        for item in data["detail"]:
+            if not isinstance(item, dict):
+                continue
+            msg = item.get("msg")
+            loc = item.get("loc")
+            loc_str = "".join([str(x) + "." for x in loc])[:-1] if isinstance(loc, list) else ""
+            if msg and loc_str:
+                parts.append(f"{loc_str}: {msg}")
+            elif msg:
+                parts.append(str(msg))
+        return "; ".join(parts)
+    return ""
+
+
 def extract_text(
     file_path: Path,
     api_key: str,
@@ -115,7 +145,17 @@ def extract_text(
         raise OCRException(f"Network error: {exc}") from exc
 
     if resp.status_code != 200:
-        raise OCRException(f"API error: {resp.status_code} {resp.text}")
+        body = resp.text
+        try:
+            data = resp.json()
+            _scrub_files(data)
+            summary = _summarize_error(data)
+            body = summary or json.dumps(data)
+        except Exception:
+            pass
+        if len(body) > 1000:
+            body = body[:1000] + "... [truncated]"
+        raise OCRException(f"API error: {resp.status_code} {body}")
 
     payload = resp.json()
     text = payload.get("text", "")
