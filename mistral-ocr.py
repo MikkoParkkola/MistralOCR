@@ -143,7 +143,8 @@ def extract_text(
     with open(file_path, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
-    mime, _ = mimetypes.guess_type(file_path)
+
+        mime, _ = mimetypes.guess_type(file_path)
     if mime is None:
         mime = "application/octet-stream"
 
