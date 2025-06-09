@@ -146,7 +146,6 @@ def setup_logging(level: str) -> None:
 
 def main(argv: List[str] | None = None) -> int:
     args = parse_args(argv)
-
     config_path = Path(args.config_path)
     ensure_config_template(config_path)
     config = load_config(config_path)
