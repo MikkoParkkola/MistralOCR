@@ -7,15 +7,19 @@ function storageSet(obj) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const items = await storageGet(['api_key', 'debug']);
+  const items = await storageGet(['api_key', 'model', 'language', 'debug']);
   document.getElementById('apiKey').value = items.api_key || '';
+  document.getElementById('model').value = items.model || '';
+  document.getElementById('language').value = items.language || '';
   document.getElementById('debug').checked = !!items.debug;
 });
 
-document.getElementById('saveKey').addEventListener('click', async () => {
+document.getElementById('saveSettings').addEventListener('click', async () => {
   const key = document.getElementById('apiKey').value.trim();
-  await storageSet({ api_key: key });
-  document.getElementById('status').textContent = 'API key saved.';
+  const model = document.getElementById('model').value.trim();
+  const language = document.getElementById('language').value.trim();
+  await storageSet({ api_key: key, model, language });
+  document.getElementById('status').textContent = 'Settings saved.';
 });
 
 document.getElementById('debug').addEventListener('change', async (e) => {

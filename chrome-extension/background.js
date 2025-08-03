@@ -83,13 +83,17 @@ function storageSet(obj) {
   return new Promise((resolve) => chrome.storage.local.set(obj, resolve));
 }
 
-async function getApiKey() {
-  const items = await storageGet("api_key");
-  return items.api_key || "";
+async function getSettings() {
+  const items = await storageGet(["api_key", "model", "language"]);
+  return {
+    apiKey: items.api_key || "",
+    model: items.model || "",
+    language: items.language || "",
+  };
 }
 
 async function fetchAndOCR(tab) {
-  const apiKey = await getApiKey();
+  const { apiKey, model, language } = await getSettings();
   try {
     debugLog("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
@@ -110,7 +114,7 @@ async function fetchAndOCR(tab) {
       {
         method: "POST",
         headers,
-        body: JSON.stringify({ file: dataUrl }),
+        body: JSON.stringify({ file: dataUrl, model, language }),
         timeout: 15000,
       },
       2
@@ -182,7 +186,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 async function runTests() {
   debugLog("runTests: start");
   const results = [];
-  const apiKey = await getApiKey();
+  const { apiKey } = await getSettings();
   const apiKeyOk = !!apiKey;
   debugLog("runTests: api key", apiKey ? apiKey.slice(0, 4) + "..." : "missing");
   results.push(apiKeyOk ? "API key set" : "API key missing");
@@ -235,9 +239,11 @@ async function runTests() {
       serverAuthorized = true;
       results.push("OCR server authorized");
     } else if (health.status === 401 || health.status === 403) {
-      results.push("OCR server unauthorized");
+      results.push(`OCR server unauthorized: ${health.status}`);
+      console.error("OCR server unauthorized", body);
     } else {
       results.push(`OCR server error: ${health.status}`);
+      console.error("OCR server error", health.status, body);
     }
   } catch (e) {
     results.push("OCR server unreachable");
