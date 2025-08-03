@@ -76,7 +76,6 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   } else if (req.type === "getSelection") {
     sendResponse({ markdown: getSelectionMarkdown() });
   }
-  return true;
 });
 
 //# sourceURL=content.js
