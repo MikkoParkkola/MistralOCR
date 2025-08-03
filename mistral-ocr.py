@@ -10,6 +10,7 @@ import glob
 import base64
 import logging
 import json
+import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 import mimetypes
@@ -137,6 +138,8 @@ def extract_text(
     output_format: str = "markdown",
     language: Optional[str] = None,
     model: str = DEFAULT_MODEL,
+    retries: int = 2,
+    backoff: float = 1.0,
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
     headers = {
@@ -161,10 +164,18 @@ def extract_text(
     if language:
         payload["language"] = language
 
-    try:
-        resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-    except requests.RequestException as exc:  # pragma: no cover - network issues
-        raise OCRException(f"Network error: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+            break
+        except requests.RequestException as exc:  # pragma: no cover - network issues
+            last_exc = exc
+            if attempt == retries:
+                raise OCRException(f"Network error: {exc}") from exc
+            time.sleep(backoff * 2 ** attempt)
+    else:  # pragma: no cover - loop didn't break
+        raise OCRException(f"Network error: {last_exc}")
 
     if resp.status_code != 200:
         body = resp.text

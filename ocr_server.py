@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import argparse
 import logging
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -54,16 +55,43 @@ def ocr():
         suffix = ext
     fd, temp_path = tempfile.mkstemp(suffix=suffix)
     Path(temp_path).write_bytes(base64.b64decode(encoded))
-    text, tokens, cost = mocr.extract_text(Path(temp_path), api_key)
-    Path(temp_path).unlink(missing_ok=True)
+    try:
+        text, tokens, cost = _extract_with_retry(Path(temp_path), api_key)
+    except mocr.OCRException as exc:
+        app.logger.error("OCR failed: %s", exc)
+        status = 401 if "401" in str(exc) else 403 if "403" in str(exc) else 502
+        return jsonify({"error": str(exc)}), status
+    except Exception as exc:  # pragma: no cover - unexpected
+        app.logger.exception("Unexpected OCR failure: %s", exc)
+        return jsonify({"error": "internal error"}), 500
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
     return jsonify({"markdown": text, "tokens": tokens, "cost": cost})
 
 
 @app.get("/health")
 def health():
+    api_key = request.headers.get("X-API-Key")
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        api_key = auth_header[7:]
     if args.debug:
-        app.logger.debug("Health check")
+        masked = (api_key[:4] + "...") if api_key else "None"
+        app.logger.debug("Health check, api key: %s", masked)
+    if not api_key:
+        return jsonify({"status": "missing api key"}), 401
     return jsonify({"status": "ok"})
+
+
+def _extract_with_retry(path: Path, api_key: str, retries: int = 2, backoff: float = 1.0):
+    for attempt in range(retries + 1):
+        try:
+            return mocr.extract_text(path, api_key)
+        except mocr.OCRException as exc:
+            if "401" in str(exc) or "403" in str(exc) or attempt == retries:
+                raise
+            app.logger.warning("OCR attempt %d failed: %s", attempt + 1, exc)
+            time.sleep(backoff * 2 ** attempt)
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=args.debug)

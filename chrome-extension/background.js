@@ -17,6 +17,29 @@ function debugLog(...args) {
   }
 }
 
+async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = options.timeout || 5000;
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!resp.ok && attempt < retries && resp.status >= 500) {
+        debugLog(`Fetch ${url} failed with status ${resp.status}, retrying...`);
+        await new Promise((r) => setTimeout(r, backoff * 2 ** attempt));
+        continue;
+      }
+      return resp;
+    } catch (e) {
+      debugLog(`Fetch ${url} error`, e);
+      if (attempt === retries) throw e;
+      await new Promise((r) => setTimeout(r, backoff * 2 ** attempt));
+    }
+  }
+  throw new Error("fetchWithRetry exhausted retries");
+}
+
 async function sendMessageWithInjection(tabId, message) {
   try {
     return await chrome.tabs.sendMessage(tabId, message);
@@ -55,14 +78,22 @@ async function fetchAndOCR(tab) {
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
     }
-    const ocrResp = await fetch("http://127.0.0.1:5000/ocr", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ file: dataUrl }),
-    });
+    const ocrResp = await fetchWithRetry(
+      "http://127.0.0.1:5000/ocr",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ file: dataUrl }),
+        timeout: 15000,
+      },
+      2
+    );
     debugLog("OCR response status", ocrResp.status);
+    if (!ocrResp.ok) {
+      debugLog("OCR error body", await ocrResp.text());
+      return "";
+    }
     const data = await ocrResp.json();
     return data.markdown || "";
   } catch (e) {
@@ -153,9 +184,13 @@ async function runTests() {
     const headers = {};
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
     }
-    const health = await fetch("http://127.0.0.1:5000/health", { headers });
+    debugLog("Health check to OCR server");
+    const health = await fetchWithRetry(
+      "http://127.0.0.1:5000/health",
+      { headers, timeout: 5000 },
+      1
+    );
     serverReachable = true;
     results.push("OCR server reachable");
     debugLog("Health check status", health.status);
@@ -163,8 +198,12 @@ async function runTests() {
       serverAuthorized = true;
       results.push("OCR server authorized");
     } else if (health.status === 401 || health.status === 403) {
+      const body = await health.text();
+      debugLog("Health check unauthorized body", body);
       results.push("OCR server unauthorized");
     } else {
+      const body = await health.text();
+      debugLog("Health check error body", body);
       results.push(`OCR server error: ${health.status}`);
     }
   } catch (e) {
