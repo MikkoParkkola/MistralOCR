@@ -139,7 +139,10 @@ def extract_text(
     model: str = DEFAULT_MODEL,
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "X-API-Key": api_key,
+    }
     with open(file_path, "rb") as fh:
         encoded = base64.b64encode(fh.read()).decode()
 
