@@ -17,14 +17,31 @@ function debugLog(...args) {
   }
 }
 
+function scrubHeaders(headers = {}) {
+  const clean = { ...headers };
+  if (clean.Authorization) {
+    clean.Authorization = clean.Authorization.replace(/Bearer\s+.+/, "Bearer ***");
+  }
+  if (clean["X-API-Key"]) {
+    clean["X-API-Key"] = "***";
+  }
+  return clean;
+}
+
 async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      debugLog("fetchWithRetry request", {
+        url,
+        options: { ...options, headers: scrubHeaders(options.headers) },
+        attempt,
+      });
       const controller = new AbortController();
       const timeout = options.timeout || 5000;
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       const resp = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeoutId);
+      debugLog("fetchWithRetry response", { url, status: resp.status });
       if (!resp.ok && attempt < retries && resp.status >= 500) {
         debugLog(`Fetch ${url} failed with status ${resp.status}, retrying...`);
         await new Promise((r) => setTimeout(r, backoff * 2 ** attempt));
@@ -41,15 +58,20 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
 }
 
 async function sendMessageWithInjection(tabId, message) {
+  debugLog("sendMessage", { tabId, message });
   try {
-    return await chrome.tabs.sendMessage(tabId, message);
+    const resp = await chrome.tabs.sendMessage(tabId, message);
+    debugLog("sendMessage response", resp);
+    return resp;
   } catch (e) {
-    debugLog("Injecting content script into tab", tabId);
+    debugLog("Injecting content script into tab", tabId, e);
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["content.js"],
     });
-    return await chrome.tabs.sendMessage(tabId, message);
+    const resp = await chrome.tabs.sendMessage(tabId, message);
+    debugLog("sendMessage response after injection", resp);
+    return resp;
   }
 }
 
@@ -79,6 +101,10 @@ async function fetchAndOCR(tab) {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
+    debugLog("OCR request", {
+      url: "http://127.0.0.1:5000/ocr",
+      headers: scrubHeaders(headers),
+    });
     const ocrResp = await fetchWithRetry(
       "http://127.0.0.1:5000/ocr",
       {
@@ -154,16 +180,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 async function runTests() {
+  debugLog("runTests: start");
   const results = [];
   const apiKey = await getApiKey();
   const apiKeyOk = !!apiKey;
+  debugLog("runTests: api key", apiKey ? apiKey.slice(0, 4) + "..." : "missing");
   results.push(apiKeyOk ? "API key set" : "API key missing");
 
   let contentOk = false;
   try {
+    debugLog("runTests: checking content script");
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id !== undefined) {
       const resp = await sendMessageWithInjection(tab.id, { type: "getPage" });
+      debugLog("runTests: content script response", resp);
       if (resp && resp.markdown) {
         results.push("Content script accessible");
         contentOk = true;
@@ -185,25 +215,28 @@ async function runTests() {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
-    debugLog("Health check to OCR server");
+    debugLog("runTests: health check request", {
+      url: "http://127.0.0.1:5000/health",
+      headers: scrubHeaders(headers),
+    });
     const health = await fetchWithRetry(
       "http://127.0.0.1:5000/health",
       { headers, timeout: 5000 },
       1
     );
     serverReachable = true;
+    const body = await health.text();
+    debugLog("runTests: health check response", {
+      status: health.status,
+      body,
+    });
     results.push("OCR server reachable");
-    debugLog("Health check status", health.status);
     if (health.status === 200) {
       serverAuthorized = true;
       results.push("OCR server authorized");
     } else if (health.status === 401 || health.status === 403) {
-      const body = await health.text();
-      debugLog("Health check unauthorized body", body);
       results.push("OCR server unauthorized");
     } else {
-      const body = await health.text();
-      debugLog("Health check error body", body);
       results.push(`OCR server error: ${health.status}`);
     }
   } catch (e) {
@@ -211,6 +244,7 @@ async function runTests() {
     debugLog("Health check failed", e);
   }
   const passed = apiKeyOk && contentOk && serverReachable && serverAuthorized;
+  debugLog("runTests: results", results, "passed:", passed);
   return { passed, details: results };
 }
 
