@@ -83,8 +83,23 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
 
 async function sendMessageWithInjection(tabId, message) {
   debugLog("sendMessage", { tabId, message });
+  const send = () =>
+    new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (resp) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            reject(new Error(err.message));
+          } else {
+            resolve(resp);
+          }
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
   try {
-    const resp = await chrome.tabs.sendMessage(tabId, message);
+    const resp = await send();
     debugLog("sendMessage response", resp);
     return resp;
   } catch (e) {
@@ -94,7 +109,7 @@ async function sendMessageWithInjection(tabId, message) {
         target: { tabId },
         files: ["content.js"],
       });
-      const resp = await chrome.tabs.sendMessage(tabId, message);
+      const resp = await send();
       debugLog("sendMessage response after injection", resp);
       return resp;
     } catch (err) {
@@ -315,31 +330,26 @@ async function runTests() {
   return { passed, details: results };
 }
 
-chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((req, sender) => {
   if (req.type === "saveTab") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs[0];
-      (async () => {
+    return (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         let ok = false;
         if (tab && tab.id !== undefined) {
-          try {
-            ok = await processTab(tab, true);
-          } catch (e) {
-            errorLog("processTab failed", e);
-          }
+          ok = await processTab(tab, true);
         }
-        sendResponse({ ok });
-      })();
-    });
-    return true;
+        return { ok };
+      } catch (e) {
+        errorLog("processTab failed", e);
+        return { ok: false };
+      }
+    })();
   }
   if (req.type === "runTests") {
-    runTests()
-      .then(sendResponse)
-      .catch((e) => {
-        errorLog("runTests failed", e);
-        sendResponse({ passed: false, details: ["Exception: " + e.message] });
-      });
-    return true;
+    return runTests().catch((e) => {
+      errorLog("runTests failed", e);
+      return { passed: false, details: ["Exception: " + e.message] };
+    });
   }
 });
