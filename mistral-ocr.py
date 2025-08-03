@@ -14,7 +14,18 @@ import time
 from pathlib import Path
 from typing import List, Optional, Tuple
 import mimetypes
-import requests
+
+try:  # pragma: no cover - optional dependency
+    import requests  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't installed
+    import importlib.util, sys
+    _compat_path = Path(__file__).with_name("compat_requests.py")
+    _spec = importlib.util.spec_from_file_location("compat_requests", _compat_path)
+    compat_requests = importlib.util.module_from_spec(_spec)
+    sys.modules[_spec.name] = compat_requests
+    assert _spec.loader
+    _spec.loader.exec_module(compat_requests)  # type: ignore
+    requests = compat_requests  # type: ignore
 
 
 # ----------------------------- Configuration -----------------------------
