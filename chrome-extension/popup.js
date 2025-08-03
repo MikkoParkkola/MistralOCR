@@ -30,5 +30,13 @@ document.getElementById('runTests').addEventListener('click', () => {
 });
 
 document.getElementById('saveMarkdown').addEventListener('click', () => {
-  chrome.runtime.sendMessage({ type: 'saveTab' });
+  const status = document.getElementById('status');
+  status.textContent = 'Saving...';
+  chrome.runtime.sendMessage({ type: 'saveTab' }, (resp) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = 'Error: ' + chrome.runtime.lastError.message;
+      return;
+    }
+    status.textContent = resp && resp.ok ? 'Markdown saved.' : 'Failed to save.';
+  });
 });

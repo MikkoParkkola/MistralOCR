@@ -25,24 +25,35 @@ async function getApiKey() {
 
 async function fetchAndOCR(tab) {
   const apiKey = await getApiKey();
-  const resp = await fetch(tab.url, { credentials: "omit" });
-  const blob = await resp.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-  const dataUrl = `data:${blob.type || "application/octet-stream"};base64,${base64}`;
-  const ocrResp = await fetch("http://localhost:5000/ocr", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: dataUrl, api_key: apiKey }),
-  });
-  const data = await ocrResp.json();
-  return data.markdown || "";
+  try {
+    const resp = await fetch(tab.url, { credentials: "omit" });
+    const blob = await resp.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const dataUrl = `data:${blob.type || "application/octet-stream"};base64,${base64}`;
+    const ocrResp = await fetch("http://127.0.0.1:5000/ocr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: dataUrl, api_key: apiKey }),
+    });
+    const data = await ocrResp.json();
+    return data.markdown || "";
+  } catch (e) {
+    console.error("OCR request failed", e);
+    return "";
+  }
 }
 
 function downloadMarkdown(markdown, filename) {
-  const blob = new Blob([markdown], { type: "text/markdown" });
-  const url = URL.createObjectURL(blob);
-  chrome.downloads.download({ url, filename, saveAs: true });
+  return new Promise((resolve) => {
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    chrome.downloads.download({ url, filename, saveAs: true }, (id) => {
+      URL.revokeObjectURL(url);
+      resolve(!!id);
+    });
+  });
+
 }
 
 function sanitizeFilename(name) {
@@ -56,22 +67,27 @@ chrome.runtime.onInstalled.addListener(() => {
 
 async function processTab(tab, preferSelection) {
   const filename = sanitizeFilename(tab.title || "page") + ".md";
-  let response;
-  if (preferSelection) {
-    response = await sendMessageWithInjection(tab.id, { type: "getSelection" });
-    if (!response || !response.markdown || !response.markdown.trim()) {
+  try {
+    let response;
+    if (preferSelection) {
+      response = await sendMessageWithInjection(tab.id, { type: "getSelection" });
+      if (!response || !response.markdown || !response.markdown.trim()) {
+        response = await sendMessageWithInjection(tab.id, { type: "getPage" });
+      }
+    } else {
       response = await sendMessageWithInjection(tab.id, { type: "getPage" });
     }
-  } else {
-    response = await sendMessageWithInjection(tab.id, { type: "getPage" });
+    let markdown = response && response.markdown;
+    if (!markdown || !markdown.trim()) {
+      markdown = await fetchAndOCR(tab);
+    }
+    if (markdown && markdown.trim()) {
+      return await downloadMarkdown(markdown, filename);
+    }
+  } catch (e) {
+    console.error("Processing tab failed", e);
   }
-  let markdown = response && response.markdown;
-  if (!markdown || !markdown.trim()) {
-    markdown = await fetchAndOCR(tab);
-  }
-  if (markdown && markdown.trim()) {
-    downloadMarkdown(markdown, filename);
-  }
+  return false;
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -99,8 +115,8 @@ async function runTests() {
     results.push("Error accessing tab");
   }
   try {
-    const health = await fetch("http://localhost:5000/health");
-    results.push(health.ok ? "OCR server reachable" : "OCR server error");
+    const health = await fetch("http://127.0.0.1:5000/health");
+    results.push(health.ok ? "OCR server reachable" : `OCR server error: ${health.status}`);
   } catch (e) {
     results.push("OCR server unreachable");
   }
@@ -112,10 +128,11 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   if (req.type === "saveTab") {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       const tab = tabs[0];
+      let ok = false;
       if (tab && tab.id !== undefined) {
-        await processTab(tab, true);
+        ok = await processTab(tab, true);
       }
-      sendResponse({ status: "done" });
+      sendResponse({ ok });
     });
     return true;
   }

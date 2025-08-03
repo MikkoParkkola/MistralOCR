@@ -39,6 +39,9 @@ pip install flask flask-cors
 python ocr_server.py
 ```
 
+The server listens on `http://127.0.0.1:5000`, which the extension uses for
+health checks and OCR requests.
+
 ### Load the extension
 
 1. Open `chrome://extensions` in Chrome and enable **Developer mode**.
