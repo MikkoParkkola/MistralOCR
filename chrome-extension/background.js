@@ -31,10 +31,12 @@ async function fetchAndOCR(tab) {
     const arrayBuffer = await blob.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
     const dataUrl = `data:${blob.type || "application/octet-stream"};base64,${base64}`;
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     const ocrResp = await fetch("http://127.0.0.1:5000/ocr", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file: dataUrl, api_key: apiKey }),
+      headers,
+      body: JSON.stringify({ file: dataUrl }),
     });
     const data = await ocrResp.json();
     return data.markdown || "";
@@ -53,7 +55,6 @@ function downloadMarkdown(markdown, filename) {
       resolve(!!id);
     });
   });
-
 }
 
 function sanitizeFilename(name) {
@@ -115,7 +116,9 @@ async function runTests() {
     results.push("Error accessing tab");
   }
   try {
-    const health = await fetch("http://127.0.0.1:5000/health");
+    const headers = {};
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    const health = await fetch("http://127.0.0.1:5000/health", { headers });
     results.push(health.ok ? "OCR server reachable" : `OCR server error: ${health.status}`);
   } catch (e) {
     results.push("OCR server unreachable");
