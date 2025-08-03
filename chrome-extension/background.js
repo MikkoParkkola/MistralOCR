@@ -119,7 +119,13 @@ async function runTests() {
     const headers = {};
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     const health = await fetch("http://127.0.0.1:5000/health", { headers });
-    results.push(health.ok ? "OCR server reachable" : `OCR server error: ${health.status}`);
+    if (health.ok) {
+      results.push("OCR server reachable");
+    } else if (health.status === 401 || health.status === 403) {
+      results.push("OCR server unauthorized");
+    } else {
+      results.push(`OCR server error: ${health.status}`);
+    }
   } catch (e) {
     results.push("OCR server unreachable");
   }

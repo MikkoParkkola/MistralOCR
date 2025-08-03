@@ -24,8 +24,8 @@ def ocr():
     data = request.get_json(force=True)
     image = data.get("image")
     file_data = data.get("file")
-    # Accept API key via JSON or Authorization header for better security
-    api_key = data.get("api_key")
+    # Accept API key via JSON or either Authorization or X-API-Key headers
+    api_key = data.get("api_key") or request.headers.get("X-API-Key")
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         api_key = auth_header[7:]
