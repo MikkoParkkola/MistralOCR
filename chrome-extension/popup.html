@@ -20,11 +20,19 @@
   <label>Language
     <input type="text" id="language" placeholder="optional language hint" />
   </label>
+  <label>Output Format
+    <select id="format">
+      <option value="markdown">Markdown (.md)</option>
+      <option value="text">Plain text (.txt)</option>
+      <option value="json">JSON (.json)</option>
+    </select>
+  </label>
   <button id="saveSettings">Save Settings</button>
   <label><input type="checkbox" id="debug" /> Enable debug logging</label>
   <button id="runTests">Run Tests</button>
-  <button id="saveMarkdown">Save to Markdown</button>
+  <button id="saveMarkdown">Save</button>
   <div id="status"></div>
+  <div id="version" style="margin-top:8px;color:#666;font-size:smaller"></div>
   <script src="popup.js"></script>
 </body>
 </html>

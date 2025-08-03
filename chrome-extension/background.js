@@ -92,16 +92,17 @@ function storageSet(obj) {
 }
 
 async function getSettings() {
-  const items = await storageGet(["api_key", "model", "language"]);
+  const items = await storageGet(["api_key", "model", "language", "format"]);
   return {
     apiKey: items.api_key || "",
     model: items.model || "",
     language: items.language || "",
+    format: items.format || "markdown",
   };
 }
 
-async function fetchAndOCR(tab) {
-  const { apiKey, model, language } = await getSettings();
+async function fetchAndOCR(tab, settings) {
+  const { apiKey, model, language, format } = settings;
   try {
   log("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
@@ -112,6 +113,7 @@ async function fetchAndOCR(tab) {
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["X-API-Key"] = apiKey;
     }
     log("OCR request", {
       url: "http://127.0.0.1:5000/ocr",
@@ -122,7 +124,7 @@ async function fetchAndOCR(tab) {
       {
         method: "POST",
         headers,
-        body: JSON.stringify({ file: dataUrl, model, language }),
+        body: JSON.stringify({ file: dataUrl, model, language, format }),
         timeout: 15000,
       },
       2
@@ -133,16 +135,21 @@ async function fetchAndOCR(tab) {
       return "";
     }
     const data = await ocrResp.json();
-    return data.markdown || "";
+    return data.text || data.markdown || "";
   } catch (e) {
     errorLog("OCR request failed", e);
     return "";
   }
 }
 
-function downloadMarkdown(markdown, filename) {
+function downloadContent(content, filename, format) {
   return new Promise((resolve) => {
-    const blob = new Blob([markdown], { type: "text/markdown" });
+    const mime = {
+      markdown: "text/markdown",
+      text: "text/plain",
+      json: "application/json",
+    }[format] || "text/markdown";
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     chrome.downloads.download({ url, filename, saveAs: true }, (id) => {
       URL.revokeObjectURL(url);
@@ -151,17 +158,27 @@ function downloadMarkdown(markdown, filename) {
   });
 }
 
+function markdownToText(md) {
+  return md
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/[`*_>#-]/g, "");
+}
+
 function sanitizeFilename(name) {
   return name.replace(/[^a-z0-9\-]+/gi, "_");
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: "save_page", title: "Save Page to Markdown", contexts: ["page"] });
-  chrome.contextMenus.create({ id: "save_selection", title: "Save Selection to Markdown", contexts: ["selection"] });
+  chrome.contextMenus.create({ id: "save_page", title: "Save Page", contexts: ["page"] });
+  chrome.contextMenus.create({ id: "save_selection", title: "Save Selection", contexts: ["selection"] });
 });
 
 async function processTab(tab, preferSelection) {
-  const filename = sanitizeFilename(tab.title || "page") + ".md";
+  const settings = await getSettings();
+  const { format } = settings;
+  const ext = { markdown: ".md", text: ".txt", json: ".json" }[format] || ".md";
+  const filename = sanitizeFilename(tab.title || "page") + ext;
   try {
     let response;
     if (preferSelection) {
@@ -172,13 +189,16 @@ async function processTab(tab, preferSelection) {
     } else {
       response = await sendMessageWithInjection(tab.id, { type: "getPage" });
     }
-    let markdown = response && response.markdown;
-    if (!markdown || !markdown.trim()) {
+    let content = response && response.markdown;
+    if (!content || !content.trim()) {
       debugLog("Falling back to OCR for tab", tab.id);
-      markdown = await fetchAndOCR(tab);
+      content = await fetchAndOCR(tab, settings);
     }
-    if (markdown && markdown.trim()) {
-      return await downloadMarkdown(markdown, filename);
+    if (format === "text" && content) {
+      content = markdownToText(content);
+    }
+    if (content && content.trim()) {
+      return await downloadContent(content, filename, format);
     }
   } catch (e) {
     errorLog("Processing tab failed", e);
@@ -226,6 +246,7 @@ async function runTests() {
     const headers = {};
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["X-API-Key"] = apiKey;
     }
     log("runTests: health check request", {
       url: "http://127.0.0.1:5000/health",

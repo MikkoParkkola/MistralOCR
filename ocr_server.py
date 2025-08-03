@@ -40,6 +40,7 @@ def ocr():
     file_data = data.get("file")
     model = data.get("model")
     language = data.get("language")
+    output_format = data.get("format", "markdown")
     # Accept API key via JSON or Authorization header (fall back to X-API-Key for backward compatibility)
     api_key = data.get("api_key") or request.headers.get("X-API-Key")
     auth_header = request.headers.get("Authorization", "")
@@ -61,7 +62,13 @@ def ocr():
     fd, temp_path = tempfile.mkstemp(suffix=suffix)
     Path(temp_path).write_bytes(base64.b64decode(encoded))
     try:
-        text, tokens, cost = _extract_with_retry(Path(temp_path), api_key, model=model, language=language)
+        text, tokens, cost = _extract_with_retry(
+            Path(temp_path),
+            api_key,
+            model=model,
+            language=language,
+            output_format=output_format,
+        )
     except mocr.OCRException as exc:
         app.logger.error("OCR failed: %s", exc)
         status = 401 if "401" in str(exc) else 403 if "403" in str(exc) else 502
@@ -71,7 +78,10 @@ def ocr():
         return jsonify({"error": "internal error"}), 500
     finally:
         Path(temp_path).unlink(missing_ok=True)
-    return jsonify({"markdown": text, "tokens": tokens, "cost": cost})
+    resp = {"text": text, "tokens": tokens, "cost": cost}
+    if output_format == "markdown":
+        resp["markdown"] = text
+    return jsonify(resp)
 
 
 @app.get("/health")
@@ -97,10 +107,25 @@ def health():
         return jsonify({"status": "upstream error"}), 502
 
 
-def _extract_with_retry(path: Path, api_key: str, *, model: str | None = None, language: str | None = None, retries: int = 2, backoff: float = 1.0):
+def _extract_with_retry(
+    path: Path,
+    api_key: str,
+    *,
+    model: str | None = None,
+    language: str | None = None,
+    output_format: str = "markdown",
+    retries: int = 2,
+    backoff: float = 1.0,
+):
     for attempt in range(retries + 1):
         try:
-            return mocr.extract_text(path, api_key, model=model or mocr.DEFAULT_MODEL, language=language)
+            return mocr.extract_text(
+                path,
+                api_key,
+                output_format=output_format,
+                model=model or mocr.DEFAULT_MODEL,
+                language=language,
+            )
         except mocr.OCRException as exc:
             if "401" in str(exc) or "403" in str(exc) or attempt == retries:
                 raise
