@@ -317,18 +317,29 @@ async function runTests() {
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   if (req.type === "saveTab") {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tab = tabs[0];
-      let ok = false;
-      if (tab && tab.id !== undefined) {
-        ok = await processTab(tab, true);
-      }
-      sendResponse({ ok });
+      (async () => {
+        let ok = false;
+        if (tab && tab.id !== undefined) {
+          try {
+            ok = await processTab(tab, true);
+          } catch (e) {
+            errorLog("processTab failed", e);
+          }
+        }
+        sendResponse({ ok });
+      })();
     });
     return true;
   }
   if (req.type === "runTests") {
-    runTests().then(sendResponse);
+    runTests()
+      .then(sendResponse)
+      .catch((e) => {
+        errorLog("runTests failed", e);
+        sendResponse({ passed: false, details: ["Exception: " + e.message] });
+      });
     return true;
   }
 });
