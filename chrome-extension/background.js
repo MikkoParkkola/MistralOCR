@@ -18,19 +18,13 @@ function storageSet(obj) {
   return new Promise((resolve) => chrome.storage.local.set(obj, resolve));
 }
 
-async function getApiKey(tabId) {
+async function getApiKey() {
   const items = await storageGet("api_key");
-  let key = items.api_key;
-  if (!key) {
-    const resp = await sendMessageWithInjection(tabId, { type: "promptApiKey" });
-    key = resp && resp.apiKey ? resp.apiKey : "";
-    if (key) await storageSet({ api_key: key });
-  }
-  return key || "";
+  return items.api_key || "";
 }
 
 async function fetchAndOCR(tab) {
-  const apiKey = await getApiKey(tab.id);
+  const apiKey = await getApiKey();
   const resp = await fetch(tab.url, { credentials: "omit" });
   const blob = await resp.blob();
   const arrayBuffer = await blob.arrayBuffer();
@@ -60,12 +54,14 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "save_selection", title: "Save Selection to Markdown", contexts: ["selection"] });
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (!tab || tab.id === undefined) return;
+async function processTab(tab, preferSelection) {
   const filename = sanitizeFilename(tab.title || "page") + ".md";
   let response;
-  if (info.menuItemId === "save_selection") {
+  if (preferSelection) {
     response = await sendMessageWithInjection(tab.id, { type: "getSelection" });
+    if (!response || !response.markdown || !response.markdown.trim()) {
+      response = await sendMessageWithInjection(tab.id, { type: "getPage" });
+    }
   } else {
     response = await sendMessageWithInjection(tab.id, { type: "getPage" });
   }
@@ -75,5 +71,56 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
   if (markdown && markdown.trim()) {
     downloadMarkdown(markdown, filename);
+  }
+}
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!tab || tab.id === undefined) return;
+  await processTab(tab, info.menuItemId === "save_selection");
+});
+
+async function runTests() {
+  const results = [];
+  const apiKey = await getApiKey();
+  results.push(apiKey ? "API key set" : "API key missing");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id !== undefined) {
+      const resp = await sendMessageWithInjection(tab.id, { type: "getPage" });
+      if (resp && resp.markdown) {
+        results.push("Content script accessible");
+      } else {
+        results.push("Content script returned empty");
+      }
+    } else {
+      results.push("No active tab");
+    }
+  } catch (e) {
+    results.push("Error accessing tab");
+  }
+  try {
+    const health = await fetch("http://localhost:5000/health");
+    results.push(health.ok ? "OCR server reachable" : "OCR server error");
+  } catch (e) {
+    results.push("OCR server unreachable");
+  }
+  const passed = results.every((r) => !/missing|empty|error|unreachable/.test(r));
+  return { passed, details: results };
+}
+
+chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  if (req.type === "saveTab") {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      const tab = tabs[0];
+      if (tab && tab.id !== undefined) {
+        await processTab(tab, true);
+      }
+      sendResponse({ status: "done" });
+    });
+    return true;
+  }
+  if (req.type === "runTests") {
+    runTests().then(sendResponse);
+    return true;
   }
 });

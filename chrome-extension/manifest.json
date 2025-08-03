@@ -15,7 +15,8 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Save to Markdown"
+    "default_title": "Save to Markdown",
+    "default_popup": "popup.html"
   },
   "host_permissions": ["<all_urls>"]
 }

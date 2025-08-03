@@ -72,9 +72,6 @@ chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
     sendResponse({ markdown: getPageMarkdown() });
   } else if (req.type === "getSelection") {
     sendResponse({ markdown: getSelectionMarkdown() });
-  } else if (req.type === "promptApiKey") {
-    const apiKey = window.prompt("Enter Mistral API key");
-    sendResponse({ apiKey });
   }
   return true;
 });
