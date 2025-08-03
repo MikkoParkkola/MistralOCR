@@ -40,10 +40,10 @@ python ocr_server.py
 ```
 
 The server listens on `http://127.0.0.1:5000`, which the extension uses for
-health checks and OCR requests. The extension transmits the API key via an
-`Authorization` header (bearer token) rather than in the request body. The
-server forwards this key in both `Authorization` and `X-API-Key` headers when
-calling the Mistral API to match the service's authentication requirements.
+health checks and OCR requests. The extension transmits the API key in both
+`Authorization` and `X-API-Key` headers rather than in the request body. The
+server forwards these headers when calling the Mistral API to match the
+service's authentication requirements.
 
 ### Load the extension
 

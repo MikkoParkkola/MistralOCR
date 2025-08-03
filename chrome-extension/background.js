@@ -32,7 +32,10 @@ async function fetchAndOCR(tab) {
     const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
     const dataUrl = `data:${blob.type || "application/octet-stream"};base64,${base64}`;
     const headers = { "Content-Type": "application/json" };
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["X-API-Key"] = apiKey;
+    }
     const ocrResp = await fetch("http://127.0.0.1:5000/ocr", {
       method: "POST",
       headers,
@@ -117,7 +120,10 @@ async function runTests() {
   }
   try {
     const headers = {};
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers["X-API-Key"] = apiKey;
+    }
     const health = await fetch("http://127.0.0.1:5000/health", { headers });
     if (health.ok) {
       results.push("OCR server reachable");
@@ -129,7 +135,9 @@ async function runTests() {
   } catch (e) {
     results.push("OCR server unreachable");
   }
-  const passed = results.every((r) => !/missing|empty|error|unreachable/.test(r));
+  const passed = results.every(
+    (r) => !/missing|empty|error|unreachable|unauthorized/.test(r)
+  );
   return { passed, details: results };
 }
 
