@@ -6,6 +6,8 @@
     body { font-family: sans-serif; min-width: 250px; }
     label { display: block; margin-top: 8px; }
     input { width: 100%; }
+    input[type="checkbox"] { width: auto; margin-right: 4px; }
+    label.inline { display: flex; align-items: center; }
     button { margin-top: 8px; width: 100%; }
     #status { margin-top: 8px; white-space: pre-wrap; }
   </style>
@@ -17,8 +19,9 @@
   <label>Model
     <input type="text" id="model" placeholder="mistral-ocr-latest" />
   </label>
-  <label>Language
-    <input type="text" id="language" placeholder="optional language hint" />
+  <label>Language (optional)
+    <input type="text" id="language" placeholder="e.g., en, fr, zh" />
+    <small>Optional language hint like "en" for English. Leave blank to autodetect.</small>
   </label>
   <label>Output Format
     <select id="format">
@@ -28,9 +31,9 @@
     </select>
   </label>
   <button id="saveSettings">Save Settings</button>
-  <label><input type="checkbox" id="debug" /> Enable debug logging</label>
+  <label class="inline"><input type="checkbox" id="debug" />Enable debug logging</label>
   <button id="runTests">Run Tests</button>
-  <button id="saveMarkdown">Save</button>
+  <button id="saveMarkdown">Save tab contents as...</button>
   <div id="status"></div>
   <div id="version" style="margin-top:8px;color:#666;font-size:smaller"></div>
   <script src="popup.js"></script>
