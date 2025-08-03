@@ -11,9 +11,17 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
+function log(...args) {
+  console.log("mistralocr:", ...args);
+}
+
+function errorLog(...args) {
+  console.error("mistralocr:", ...args);
+}
+
 function debugLog(...args) {
   if (debugEnabled) {
-    console.log(...args);
+    log(...args);
   }
 }
 
@@ -95,7 +103,7 @@ async function getSettings() {
 async function fetchAndOCR(tab) {
   const { apiKey, model, language } = await getSettings();
   try {
-    debugLog("Fetching tab for OCR", tab.url);
+  log("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
     const blob = await resp.blob();
     const arrayBuffer = await blob.arrayBuffer();
@@ -105,7 +113,7 @@ async function fetchAndOCR(tab) {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
-    debugLog("OCR request", {
+    log("OCR request", {
       url: "http://127.0.0.1:5000/ocr",
       headers: scrubHeaders(headers),
     });
@@ -119,15 +127,15 @@ async function fetchAndOCR(tab) {
       },
       2
     );
-    debugLog("OCR response status", ocrResp.status);
+    log("OCR response status", ocrResp.status);
     if (!ocrResp.ok) {
-      debugLog("OCR error body", await ocrResp.text());
+      log("OCR error body", await ocrResp.text());
       return "";
     }
     const data = await ocrResp.json();
     return data.markdown || "";
   } catch (e) {
-    console.error("OCR request failed", e);
+    errorLog("OCR request failed", e);
     return "";
   }
 }
@@ -173,7 +181,7 @@ async function processTab(tab, preferSelection) {
       return await downloadMarkdown(markdown, filename);
     }
   } catch (e) {
-    console.error("Processing tab failed", e);
+    errorLog("Processing tab failed", e);
   }
   return false;
 }
@@ -184,16 +192,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 async function runTests() {
-  debugLog("runTests: start");
+  log("runTests: start");
   const results = [];
   const { apiKey } = await getSettings();
   const apiKeyOk = !!apiKey;
-  debugLog("runTests: api key", apiKey ? apiKey.slice(0, 4) + "..." : "missing");
+  log("runTests: api key", apiKey ? apiKey.slice(0, 4) + "..." : "missing");
   results.push(apiKeyOk ? "API key set" : "API key missing");
 
   let contentOk = false;
   try {
-    debugLog("runTests: checking content script");
+    log("runTests: checking content script");
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id !== undefined) {
       const resp = await sendMessageWithInjection(tab.id, { type: "getPage" });
@@ -219,7 +227,7 @@ async function runTests() {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
     }
-    debugLog("runTests: health check request", {
+    log("runTests: health check request", {
       url: "http://127.0.0.1:5000/health",
       headers: scrubHeaders(headers),
     });
@@ -230,7 +238,7 @@ async function runTests() {
     );
     serverReachable = true;
     const body = await health.text();
-    debugLog("runTests: health check response", {
+    log("runTests: health check response", {
       status: health.status,
       body,
     });
@@ -240,17 +248,17 @@ async function runTests() {
       results.push("OCR server authorized");
     } else if (health.status === 401 || health.status === 403) {
       results.push(`OCR server unauthorized: ${health.status}`);
-      console.error("OCR server unauthorized", body);
+      errorLog("OCR server unauthorized", body);
     } else {
       results.push(`OCR server error: ${health.status}`);
-      console.error("OCR server error", health.status, body);
+      errorLog("OCR server error", health.status, body);
     }
   } catch (e) {
     results.push("OCR server unreachable");
-    debugLog("Health check failed", e);
+    errorLog("Health check failed", e);
   }
   const passed = apiKeyOk && contentOk && serverReachable && serverAuthorized;
-  debugLog("runTests: results", results, "passed:", passed);
+  log("runTests: results", results, "passed:", passed);
   return { passed, details: results };
 }
 

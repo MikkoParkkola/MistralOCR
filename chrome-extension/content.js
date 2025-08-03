@@ -4,6 +4,8 @@ function cleanDocument(doc) {
   });
 }
 
+console.log("mistralocr: content script loaded");
+
 function nodeToMarkdown(node) {
   if (node.nodeType === Node.TEXT_NODE) {
     return node.textContent || "";
@@ -68,6 +70,7 @@ function getSelectionMarkdown() {
 }
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  console.log("mistralocr: content script request", req.type);
   if (req.type === "getPage") {
     sendResponse({ markdown: getPageMarkdown() });
   } else if (req.type === "getSelection") {

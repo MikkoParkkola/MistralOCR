@@ -28,8 +28,10 @@ app = Flask(__name__)
 CORS(app)
 
 if args.debug:
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, format="mistralocr: %(message)s")
     app.logger.setLevel(logging.DEBUG)
+else:
+    logging.basicConfig(format="mistralocr: %(message)s")
 
 @app.post("/ocr")
 def ocr():
