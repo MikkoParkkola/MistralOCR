@@ -1,7 +1,27 @@
+let debugEnabled = false;
+
+// Load debug setting on startup
+storageGet("debug").then((items) => {
+  debugEnabled = !!items.debug;
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.debug) {
+    debugEnabled = changes.debug.newValue;
+  }
+});
+
+function debugLog(...args) {
+  if (debugEnabled) {
+    console.log(...args);
+  }
+}
+
 async function sendMessageWithInjection(tabId, message) {
   try {
     return await chrome.tabs.sendMessage(tabId, message);
   } catch (e) {
+    debugLog("Injecting content script into tab", tabId);
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ["content.js"],
@@ -26,6 +46,7 @@ async function getApiKey() {
 async function fetchAndOCR(tab) {
   const apiKey = await getApiKey();
   try {
+    debugLog("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
     const blob = await resp.blob();
     const arrayBuffer = await blob.arrayBuffer();
@@ -41,6 +62,7 @@ async function fetchAndOCR(tab) {
       headers,
       body: JSON.stringify({ file: dataUrl }),
     });
+    debugLog("OCR response status", ocrResp.status);
     const data = await ocrResp.json();
     return data.markdown || "";
   } catch (e) {
@@ -83,6 +105,7 @@ async function processTab(tab, preferSelection) {
     }
     let markdown = response && response.markdown;
     if (!markdown || !markdown.trim()) {
+      debugLog("Falling back to OCR for tab", tab.id);
       markdown = await fetchAndOCR(tab);
     }
     if (markdown && markdown.trim()) {
@@ -102,13 +125,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 async function runTests() {
   const results = [];
   const apiKey = await getApiKey();
-  results.push(apiKey ? "API key set" : "API key missing");
+  const apiKeyOk = !!apiKey;
+  results.push(apiKeyOk ? "API key set" : "API key missing");
+
+  let contentOk = false;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id !== undefined) {
       const resp = await sendMessageWithInjection(tab.id, { type: "getPage" });
       if (resp && resp.markdown) {
         results.push("Content script accessible");
+        contentOk = true;
       } else {
         results.push("Content script returned empty");
       }
@@ -117,7 +144,11 @@ async function runTests() {
     }
   } catch (e) {
     results.push("Error accessing tab");
+    debugLog("Content script test error", e);
   }
+
+  let serverReachable = false;
+  let serverAuthorized = false;
   try {
     const headers = {};
     if (apiKey) {
@@ -125,8 +156,12 @@ async function runTests() {
       headers["X-API-Key"] = apiKey;
     }
     const health = await fetch("http://127.0.0.1:5000/health", { headers });
-    if (health.ok) {
-      results.push("OCR server reachable");
+    serverReachable = true;
+    results.push("OCR server reachable");
+    debugLog("Health check status", health.status);
+    if (health.status === 200) {
+      serverAuthorized = true;
+      results.push("OCR server authorized");
     } else if (health.status === 401 || health.status === 403) {
       results.push("OCR server unauthorized");
     } else {
@@ -134,10 +169,9 @@ async function runTests() {
     }
   } catch (e) {
     results.push("OCR server unreachable");
+    debugLog("Health check failed", e);
   }
-  const passed = results.every(
-    (r) => !/missing|empty|error|unreachable|unauthorized/.test(r)
-  );
+  const passed = apiKeyOk && contentOk && serverReachable && serverAuthorized;
   return { passed, details: results };
 }
 

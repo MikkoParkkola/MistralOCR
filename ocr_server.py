@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 import importlib.util
 import sys
+import argparse
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -16,8 +18,16 @@ sys.modules[spec.name] = mocr
 assert spec.loader
 spec.loader.exec_module(mocr)
 
+parser = argparse.ArgumentParser(description="Mistral OCR server")
+parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+args, _ = parser.parse_known_args()
+
 app = Flask(__name__)
 CORS(app)
+
+if args.debug:
+    logging.basicConfig(level=logging.DEBUG)
+    app.logger.setLevel(logging.DEBUG)
 
 @app.post("/ocr")
 def ocr():
@@ -29,6 +39,10 @@ def ocr():
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         api_key = auth_header[7:]
+    if args.debug:
+        masked = (api_key[:4] + "...") if api_key else "None"
+        app.logger.debug("OCR request headers: %s", dict(request.headers))
+        app.logger.debug("API key provided: %s", masked)
     data_url = image or file_data
     if not data_url or not api_key:
         return jsonify({"error": "file/image and api_key required"}), 400
@@ -47,7 +61,9 @@ def ocr():
 
 @app.get("/health")
 def health():
+    if args.debug:
+        app.logger.debug("Health check")
     return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000)
+    app.run(host="127.0.0.1", port=5000, debug=args.debug)

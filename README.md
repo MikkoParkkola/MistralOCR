@@ -62,3 +62,14 @@ extension's background service and the local OCR server.
 If the page cannot be parsed as HTML (e.g. PDF, image, or office document), the
 extension fetches the complete file and sends it to the local OCR server for
 OCR, ensuring content beyond the visible viewport is processed.
+
+### Debugging and diagnostics
+
+Open the extension popup to enable **Enable debug logging**. When enabled, the
+background service outputs verbose logs (view them via `chrome://extensions`
+→ **Service worker**). The **Run Tests** button now reports separate checks for
+the API key, content script, server reachability, and authorization so it is
+clear which step failed.
+
+Run the OCR server with `python ocr_server.py --debug` to see request headers
+and other diagnostic information.

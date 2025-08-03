@@ -7,14 +7,19 @@ function storageSet(obj) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const items = await storageGet('api_key');
+  const items = await storageGet(['api_key', 'debug']);
   document.getElementById('apiKey').value = items.api_key || '';
+  document.getElementById('debug').checked = !!items.debug;
 });
 
 document.getElementById('saveKey').addEventListener('click', async () => {
   const key = document.getElementById('apiKey').value.trim();
   await storageSet({ api_key: key });
   document.getElementById('status').textContent = 'API key saved.';
+});
+
+document.getElementById('debug').addEventListener('change', async (e) => {
+  await storageSet({ debug: e.target.checked });
 });
 
 document.getElementById('runTests').addEventListener('click', () => {
