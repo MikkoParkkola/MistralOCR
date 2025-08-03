@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Mistral OCR Markdown Saver",
+  "version": "1.0",
+  "description": "Save page or selection to Markdown via Mistral OCR",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage",
+    "contextMenus",
+    "tabs"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Save to Markdown",
+    "default_popup": "popup.html"
+  },
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]
+}

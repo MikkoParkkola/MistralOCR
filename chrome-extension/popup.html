@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: sans-serif; min-width: 250px; }
+    label { display: block; margin-top: 8px; }
+    input { width: 100%; }
+    button { margin-top: 8px; width: 100%; }
+    #status { margin-top: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <label>API Key
+    <input type="password" id="apiKey" placeholder="Enter API key" />
+  </label>
+  <label>Model
+    <input type="text" id="model" placeholder="mistral-ocr-latest" />
+  </label>
+  <label>Language
+    <input type="text" id="language" placeholder="optional language hint" />
+  </label>
+  <button id="saveSettings">Save Settings</button>
+  <label><input type="checkbox" id="debug" /> Enable debug logging</label>
+  <button id="runTests">Run Tests</button>
+  <button id="saveMarkdown">Save to Markdown</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
