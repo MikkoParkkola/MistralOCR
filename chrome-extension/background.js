@@ -53,6 +53,7 @@ function downloadMarkdown(markdown, filename) {
       resolve(!!id);
     });
   });
+
 }
 
 function sanitizeFilename(name) {
