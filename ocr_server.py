@@ -143,6 +143,15 @@ def _extract_with_retry(
 ):
     for attempt in range(retries + 1):
         try:
+            if args.debug:
+                app.logger.debug(
+                    "Attempt %d: extract_text path=%s model=%s language=%s format=%s",
+                    attempt + 1,
+                    path,
+                    model or mocr.DEFAULT_MODEL,
+                    language,
+                    output_format,
+                )
             return mocr.extract_text(
                 path,
                 api_key,
@@ -151,6 +160,8 @@ def _extract_with_retry(
                 language=language,
             )
         except mocr.OCRException as exc:
+            if args.debug:
+                app.logger.debug("Attempt %d error: %s", attempt + 1, exc)
             if "401" in str(exc) or "403" in str(exc) or attempt == retries:
                 raise
             app.logger.warning("OCR attempt %d failed: %s", attempt + 1, exc)

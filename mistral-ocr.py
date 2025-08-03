@@ -143,6 +143,53 @@ def _summarize_error(data: object) -> str:
     return ""
 
 
+def _prepare_request(
+    file_path: Path,
+    api_key: str,
+    model: str,
+    language: Optional[str],
+) -> tuple[dict, dict]:
+    """Build request headers and payload for the OCR API."""
+    logging.debug("Preparing request for %s", file_path)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "X-API-Key": api_key,
+    }
+    masked = (api_key[:4] + "...") if api_key else "None"
+    logging.debug("Using API key: %s", masked)
+    with open(file_path, "rb") as fh:
+        encoded = base64.b64encode(fh.read()).decode()
+    mime, _ = mimetypes.guess_type(file_path)
+    if mime is None:
+        mime = "application/octet-stream"
+    data_url = f"data:{mime};base64,{encoded}"
+    if mime.startswith("image/"):
+        document = {"type": "image_url", "image_url": {"url": data_url}}
+    else:
+        document = {"type": "document_url", "document_url": data_url}
+    payload: dict = {"document": document, "model": model}
+    if language:
+        payload["language"] = language
+    payload_log = json.loads(json.dumps(payload))  # deep copy
+    _scrub_files(payload_log)
+    logging.debug("Request headers: %s", {k: (v if k != "Authorization" else v[:10] + "...") for k, v in headers.items()})
+    logging.debug("Request payload: %s", payload_log)
+    return headers, payload
+
+
+def _send_request(headers: dict, payload: dict) -> "requests.Response":
+    """Send the OCR request and log the full exchange."""
+    logging.debug("POST %s", API_URL)
+    resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+    logging.debug("Response status: %s", resp.status_code)
+    try:
+        logging.debug("Response headers: %s", dict(resp.headers))
+    except Exception:  # pragma: no cover - headers may be missing
+        pass
+    logging.debug("Response body: %s", resp.text)
+    return resp
+
+
 def extract_text(
     file_path: Path,
     api_key: str,
@@ -153,32 +200,12 @@ def extract_text(
     backoff: float = 1.0,
 ) -> Tuple[str, int, float]:
     """Extract text from *file_path* using the Mistral OCR API."""
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "X-API-Key": api_key,
-    }
-    with open(file_path, "rb") as fh:
-        encoded = base64.b64encode(fh.read()).decode()
-
-
-        mime, _ = mimetypes.guess_type(file_path)
-    if mime is None:
-        mime = "application/octet-stream"
-
-    data_url = f"data:{mime};base64,{encoded}"
-    if mime.startswith("image/"):
-        document = {"type": "image_url", "image_url": {"url": data_url}}
-    else:
-        document = {"type": "document_url", "document_url": data_url}
-
-    payload = {"document": document, "model": model}
-    if language:
-        payload["language"] = language
+    headers, payload = _prepare_request(file_path, api_key, model, language)
 
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+            resp = _send_request(headers, payload)
             break
         except requests.RequestException as exc:  # pragma: no cover - network issues
             last_exc = exc

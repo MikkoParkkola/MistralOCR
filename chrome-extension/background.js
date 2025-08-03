@@ -52,18 +52,20 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       const resp = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeoutId);
-      const respClone = resp.clone();
-      let body = "";
-      try {
-        body = await respClone.text();
-      } catch (e) {
-        body = "<unreadable>";
+      if (debugEnabled) {
+        const respClone = resp.clone();
+        let body = "";
+        try {
+          body = await respClone.text();
+        } catch (e) {
+          body = "<unreadable>";
+        }
+        debugLog("fetchWithRetry response", {
+          url,
+          status: resp.status,
+          body,
+        });
       }
-      debugLog("fetchWithRetry response", {
-        url,
-        status: resp.status,
-        body,
-      });
       if (!resp.ok && attempt < retries && resp.status >= 500) {
         debugLog(`Fetch ${url} failed with status ${resp.status}, retrying...`);
         await new Promise((r) => setTimeout(r, backoff * 2 ** attempt));
@@ -87,13 +89,18 @@ async function sendMessageWithInjection(tabId, message) {
     return resp;
   } catch (e) {
     debugLog("Injecting content script into tab", tabId, e);
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["content.js"],
-    });
-    const resp = await chrome.tabs.sendMessage(tabId, message);
-    debugLog("sendMessage response after injection", resp);
-    return resp;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content.js"],
+      });
+      const resp = await chrome.tabs.sendMessage(tabId, message);
+      debugLog("sendMessage response after injection", resp);
+      return resp;
+    } catch (err) {
+      errorLog("sendMessage failed after injection", err);
+      throw err;
+    }
   }
 }
 
