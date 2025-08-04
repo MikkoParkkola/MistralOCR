@@ -10,17 +10,6 @@ import logging
 import time
 
 try:  # pragma: no cover - optional dependency
-    import requests  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't installed
-    _compat_path = Path(__file__).with_name("compat_requests.py")
-    _spec = importlib.util.spec_from_file_location("compat_requests", _compat_path)
-    compat_requests = importlib.util.module_from_spec(_spec)
-    sys.modules[_spec.name] = compat_requests
-    assert _spec.loader
-    _spec.loader.exec_module(compat_requests)  # type: ignore
-    requests = compat_requests  # type: ignore
-
-try:  # pragma: no cover - optional dependency
     from flask import Flask, request, jsonify  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - allow import without flask
     Flask = None  # type: ignore[assignment]
@@ -81,12 +70,7 @@ if Flask is not None:
             return "", 204
 
     def _get_api_key(data: dict | None = None) -> str | None:
-        """Extract API key from JSON payload or headers.
-
-        The browser extension may send the key via JSON body, the
-        ``Authorization`` header or the legacy ``X-API-Key`` header.  This
-        helper consolidates the logic so all endpoints behave consistently.
-        """
+        """Extract API key from JSON payload or headers."""
 
         if data and (key := data.get("api_key")):
             return key.strip() or None
@@ -95,32 +79,6 @@ if Flask is not None:
             return auth_header[7:].strip() or None
         key = request.headers.get("X-API-Key")
         return key.strip() if key else None
-
-    def _build_upstream_headers(api_key: str) -> dict[str, str]:
-        """Return a minimal set of headers for upstream requests.
-
-        Forwarding every header from the browser turned out to be brittle:
-        some security services compare values such as ``User-Agent`` or the
-        various ``Sec-*`` hints against the TLS fingerprint of the request and
-        return ``403`` if they do not match the expected browser profile.  To
-        avoid these false positives the proxy now sends only a conservative set
-        of headers required by the API.
-
-        ``Authorization`` is rebuilt from the parsed key to guarantee the
-        correct format and ``X-API-Key`` is forwarded for compatibility.  When
-        the client provides ``Accept`` or ``Content-Type`` headers they are
-        relayed as they legitimately influence the response.  Everything else is
-        intentionally dropped.
-        """
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "X-API-Key": api_key,
-        }
-        for name in ("Accept", "Content-Type"):
-            if value := request.headers.get(name):
-                headers[name] = value
-        return headers
 
 if app is not None:
     @app.post("/ocr")
@@ -171,82 +129,20 @@ if app is not None:
 
     @app.get("/health")
     def health():
+        """Simple health check endpoint.
+
+        The browser extension hits this endpoint to verify that the helper
+        server is running.  It merely validates that an API key is provided and
+        does not call the upstream Mistral API which avoids spurious 403
+        responses when network access is restricted.
+        """
+
         api_key = _get_api_key()
         masked = (api_key[:4] + "...") if api_key else "None"
         app.logger.info("Health check, api key: %s", masked)
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
-        headers = _build_upstream_headers(api_key)
-        try:
-            resp = requests.get(
-                "https://api.mistral.ai/v1/models",
-                headers=headers,
-                timeout=5,
-                proxies={},
-            )
-            snippet = resp.text[:200]
-            app.logger.info(
-                "Health upstream response: %s %s", resp.status_code, snippet
-            )
-            if resp.status_code == 200:
-                return jsonify({"status": "ok"})
-            app.logger.error(
-                "Health upstream failure: %s %s", resp.status_code, snippet
-            )
-            return (
-                jsonify({"status": "unauthorized", "body": snippet}),
-                resp.status_code,
-            )
-        except Exception as exc:  # pragma: no cover - network issues
-            app.logger.error("Health check error: %s", exc)
-            return jsonify({"status": "upstream error"}), 502
-
-    @app.route("/v1/<path:path>", methods=["GET", "POST"])
-    def proxy_v1(path: str):
-        """Forward /v1/* requests to the official Mistral API.
-
-        Propagates Authorization and X-API-Key headers from the client and logs
-        the upstream response when running with --debug to aid troubleshooting.
-        """
-        api_key = _get_api_key()
-        if not api_key:
-            return jsonify({"error": "missing api key"}), 401
-        headers = _build_upstream_headers(api_key)
-        url = f"https://api.mistral.ai/v1/{path}"
-        try:
-            method = request.method.lower()
-            req_func = getattr(requests, method)
-            upstream = req_func(
-                url,
-                params=request.args,
-                data=request.get_data(),
-                headers=headers,
-                timeout=10,
-                proxies={},
-            )
-            masked = (api_key[:4] + "...") if api_key else "None"
-            snippet = upstream.text[:200]
-            app.logger.info(
-                "Proxy %s %s key=%s status=%s body=%s",
-                request.method,
-                url,
-                masked,
-                upstream.status_code,
-                snippet,
-            )
-            if upstream.status_code in {401, 403} and not upstream.content:
-                return (
-                    jsonify({"error": "unauthorized", "body": snippet}),
-                    upstream.status_code,
-                )
-            return (
-                upstream.content,
-                upstream.status_code,
-                {k: v for k, v in upstream.headers.items()},
-            )
-        except Exception as exc:  # pragma: no cover - network issues
-            app.logger.error("Proxy error: %s", exc)
-            return jsonify({"error": "upstream error"}), 502
+        return jsonify({"status": "ok"})
 else:
     def ocr():  # type: ignore
         raise ModuleNotFoundError("flask not installed")

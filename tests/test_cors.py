@@ -25,56 +25,6 @@ def test_health_allows_extension_origin():
     assert 'X-API-Key' in allow_headers
 
 
-def test_health_strips_sensitive_headers(monkeypatch):
-    captured = {}
-
-    def fake_get(url, headers, timeout, proxies):
-        captured['headers'] = headers
-        class Resp:
-            status_code = 200
-            text = 'ok'
-        return Resp()
-
-    monkeypatch.setattr(server.requests, 'get', fake_get)
-    client = server.app.test_client()
-    origin = 'chrome-extension://abc'
-    resp = client.get(
-        '/health',
-        headers={
-            'Authorization': 'Bearer test',
-            'X-API-Key': 'test',
-            'Origin': origin,
-            'Referer': origin,
-            'User-Agent': 'tester',
-        },
-    )
-    assert resp.status_code == 200
-    assert captured['headers'] == {
-        'Authorization': 'Bearer test',
-        'X-API-Key': 'test',
-    }
-
-
-def test_health_disables_system_proxies(monkeypatch):
-    called = {}
-
-    def fake_get(url, headers, timeout, proxies):
-        called['proxies'] = proxies
-        class Resp:
-            status_code = 200
-            text = 'ok'
-        return Resp()
-
-    monkeypatch.setattr(server.requests, 'get', fake_get)
-    client = server.app.test_client()
-    resp = client.get(
-        '/health',
-        headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
-    )
-    assert resp.status_code == 200
-    assert called['proxies'] == {}
-
-
 def test_options_preflight_returns_cors_headers():
     client = server.app.test_client()
     resp = client.options('/health', headers={'Origin': 'chrome-extension://abc'})

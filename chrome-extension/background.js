@@ -321,7 +321,6 @@ async function runTests() {
   }
 
   let serverReachable = false;
-  let serverAuthorized = false;
   try {
     const headers = buildAuthHeaders(apiKey, true);
     log("runTests: health check request", {
@@ -334,22 +333,13 @@ async function runTests() {
       1
     );
     serverReachable = true;
-    const body = await health.text();
-    log("runTests: health check response", {
-      status: health.status,
-      body,
-    });
-    results.push("Middleware reachable");
+    log("runTests: health check response", { status: health.status });
     if (health.status === 200) {
-      serverAuthorized = true;
-      results.push("Middleware authorized");
-    } else if (health.status === 401 || health.status === 403) {
-      const snippet = body.slice(0, 100);
-      results.push(`Middleware unauthorized: ${health.status} ${snippet}`);
-      errorLog("Middleware unauthorized", { status: health.status, body });
+      results.push("Middleware reachable");
+    } else if (health.status === 401) {
+      results.push("Middleware missing API key");
     } else {
       results.push(`Middleware error: ${health.status}`);
-      errorLog("Middleware error", health.status, body);
     }
   } catch (e) {
     results.push("Middleware unreachable");
@@ -359,24 +349,25 @@ async function runTests() {
   let apiReachable = false;
   let apiAuthorized = false;
   let modelsListed = false;
-  let apiModelsData = null;
-  let apiRequest = null;
   try {
-      const headers = buildAuthHeaders(apiKey, true);
-      if (apiKey) {
-        results.push("API request headers set");
-      } else {
-        results.push("API request missing key headers");
-      }
-      const apiUrl = "https://api.mistral.ai/v1/models";
-      results.push(`Using API endpoint ${apiUrl}`);
-      apiRequest = { method: "GET", headers: scrubHeaders(headers) };
-      log("runTests: Mistral API request", { url: apiUrl, ...apiRequest });
-      const resp = await fetchWithRetry(
-        apiUrl,
-        { method: "GET", headers, timeout: 5000 },
-        1
-      );
+    const headers = buildAuthHeaders(apiKey, true);
+    if (apiKey) {
+      results.push("API request headers set");
+    } else {
+      results.push("API request missing key headers");
+    }
+    const apiUrl = "https://api.mistral.ai/v1/models";
+    results.push(`Using API endpoint ${apiUrl}`);
+    log("runTests: Mistral API request", {
+      url: apiUrl,
+      method: "GET",
+      headers: scrubHeaders(headers),
+    });
+    const resp = await fetchWithRetry(
+      apiUrl,
+      { method: "GET", headers, timeout: 5000 },
+      1
+    );
     apiReachable = true;
     results.push("Mistral API reachable");
     const body = await resp.text();
@@ -389,7 +380,6 @@ async function runTests() {
       results.push("Mistral API authorized");
       try {
         const data = JSON.parse(body);
-        apiModelsData = data;
         if (Array.isArray(data.data) && data.data.length > 0) {
           modelsListed = true;
           results.push(`Models listed: ${data.data.length}`);
@@ -413,76 +403,13 @@ async function runTests() {
     errorLog("Mistral API request failed", e);
   }
 
-  let middlewareModelsOk = false;
-  let middlewareRequestMatch = false;
-  if (serverReachable && apiAuthorized && modelsListed) {
-    try {
-      const headers = buildAuthHeaders(apiKey, true);
-      const mReq = { method: "GET", headers: scrubHeaders(headers) };
-      log("runTests: middleware models request", {
-        url: "http://127.0.0.1:5000/v1/models",
-        ...mReq,
-      });
-      if (apiRequest && JSON.stringify(mReq) === JSON.stringify(apiRequest)) {
-        middlewareRequestMatch = true;
-        results.push("Middleware request matches direct");
-      } else {
-        results.push("Middleware request mismatch");
-        errorLog("Middleware request mismatch", { direct: apiRequest, middleware: mReq });
-      }
-      const mResp = await fetchWithRetry(
-        "http://127.0.0.1:5000/v1/models",
-        { method: "GET", headers, timeout: 5000 },
-        1
-      );
-      const mBody = await mResp.text();
-      log("runTests: middleware models response", {
-        status: mResp.status,
-        body: mBody,
-      });
-      if (mResp.status === 200) {
-        try {
-          const data = JSON.parse(mBody);
-          if (JSON.stringify(data) === JSON.stringify(apiModelsData)) {
-            middlewareModelsOk = true;
-            const count = Array.isArray(data.data) ? data.data.length : 0;
-            results.push(`Middleware models match API: ${count}`);
-          } else {
-            results.push("Middleware models mismatch");
-            errorLog("Middleware models mismatch", {
-              api: apiModelsData,
-              middleware: data,
-            });
-          }
-        } catch (e) {
-          results.push("Middleware models parse failed");
-          errorLog("Parsing middleware models failed", e);
-        }
-      } else if (mResp.status === 401 || mResp.status === 403) {
-        const snippet = mBody.slice(0, 100);
-        results.push(`Middleware unauthorized: ${mResp.status} ${snippet}`);
-        errorLog("Middleware models unauthorized", { status: mResp.status, body: mBody });
-      } else {
-        results.push(`Middleware models error: ${mResp.status}`);
-        errorLog("Middleware models error", mResp.status, mBody);
-      }
-    } catch (e) {
-      results.push("Middleware models request failed");
-      errorLog("Middleware models request failed", e);
-    }
-  } else if (serverReachable) {
-    results.push("Skipping middleware models test: direct API failed");
-  }
   const passed =
     apiKeyOk &&
     contentOk &&
     serverReachable &&
-    serverAuthorized &&
     apiReachable &&
     apiAuthorized &&
-    modelsListed &&
-    middlewareModelsOk &&
-    middlewareRequestMatch;
+    modelsListed;
   log("runTests: results", results, "passed:", passed);
   return { passed, details: results };
 }
