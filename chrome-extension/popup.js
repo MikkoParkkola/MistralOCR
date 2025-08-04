@@ -36,6 +36,11 @@ document.getElementById('runTests').addEventListener('click', () => {
   status.textContent = 'Running tests...';
   console.log('mistralocr: runTests clicked');
   chrome.runtime.sendMessage({ type: 'runTests' }, (result) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = 'Error: ' + chrome.runtime.lastError.message;
+      console.log('mistralocr: runTests error', chrome.runtime.lastError.message);
+      return;
+    }
     if (!result) {
       status.textContent = 'No response from background.';
       console.log('mistralocr: runTests no response');
@@ -46,10 +51,16 @@ document.getElementById('runTests').addEventListener('click', () => {
   });
 });
 
-document.getElementById('saveMarkdown').addEventListener('click', () => {
+document.getElementById('saveMarkdown').addEventListener('click', async () => {
   const status = document.getElementById('status');
   status.textContent = 'Saving...';
   console.log('mistralocr: save clicked');
+  const { api_key: key } = await storageGet('api_key');
+  if (!key) {
+    status.textContent = 'Please enter an API key in settings.';
+    console.log('mistralocr: save aborted missing API key');
+    return;
+  }
   chrome.runtime.sendMessage({ type: 'saveTab' }, (resp) => {
     if (chrome.runtime.lastError) {
       status.textContent = 'Error: ' + chrome.runtime.lastError.message;

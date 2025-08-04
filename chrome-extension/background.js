@@ -114,7 +114,7 @@ async function sendMessageWithInjection(tabId, message) {
       return resp;
     } catch (err) {
       errorLog("sendMessage failed after injection", err);
-      throw err;
+      return null;
     }
   }
 }
@@ -276,6 +276,8 @@ async function runTests() {
       if (resp && resp.markdown) {
         results.push("Content script accessible");
         contentOk = true;
+      } else if (resp === null) {
+        results.push("Content script unreachable");
       } else {
         results.push("Content script returned empty");
       }
@@ -330,26 +332,37 @@ async function runTests() {
   return { passed, details: results };
 }
 
-chrome.runtime.onMessage.addListener((req, sender) => {
+chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  log("onMessage received", req.type);
   if (req.type === "saveTab") {
-    return (async () => {
+    (async () => {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         let ok = false;
         if (tab && tab.id !== undefined) {
           ok = await processTab(tab, true);
         }
-        return { ok };
+        debugLog("saveTab response", { ok });
+        sendResponse({ ok });
       } catch (e) {
         errorLog("processTab failed", e);
-        return { ok: false };
+        sendResponse({ ok: false, error: e.message });
       }
     })();
+    return true;
   }
   if (req.type === "runTests") {
-    return runTests().catch((e) => {
-      errorLog("runTests failed", e);
-      return { passed: false, details: ["Exception: " + e.message] };
-    });
+    runTests()
+      .then((res) => {
+        debugLog("runTests response", res);
+        sendResponse(res);
+      })
+      .catch((e) => {
+        errorLog("runTests failed", e);
+        sendResponse({ passed: false, details: ["Exception: " + e.message] });
+      });
+    return true;
   }
+  debugLog("Unknown message type", req.type);
+  sendResponse();
 });

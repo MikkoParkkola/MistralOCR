@@ -3,39 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <style>
-    body { font-family: sans-serif; min-width: 250px; }
-    label { display: block; margin-top: 8px; }
-    input { width: 100%; }
-    input[type="checkbox"] { width: auto; margin-right: 4px; }
-    label.inline { display: flex; align-items: center; }
-    button { margin-top: 8px; width: 100%; }
-    #status { margin-top: 8px; white-space: pre-wrap; }
+    body {
+      font-family: sans-serif;
+      min-width: 260px;
+      background: #f0f0f0;
+      margin: 0;
+    }
+    .container {
+      padding: 12px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    label {
+      display: block;
+      margin-top: 8px;
+      font-weight: 600;
+    }
+    input,
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 4px;
+      margin-top: 4px;
+    }
+    input[type="checkbox"] {
+      width: auto;
+      margin-right: 4px;
+    }
+    label.inline {
+      display: flex;
+      align-items: center;
+      font-weight: normal;
+      margin-top: 12px;
+    }
+    button {
+      margin-top: 12px;
+      width: 100%;
+      padding: 8px;
+    }
+    #status {
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+    small {
+      color: #555;
+    }
   </style>
 </head>
 <body>
-  <label>API Key
-    <input type="password" id="apiKey" placeholder="Enter API key" />
-  </label>
-  <label>Model
-    <input type="text" id="model" placeholder="mistral-ocr-latest" />
-  </label>
-  <label>Language (optional)
-    <input type="text" id="language" placeholder="e.g., en, fr, zh" />
-    <small>Optional language hint like "en" for English. Leave blank to autodetect.</small>
-  </label>
-  <label>Output Format
-    <select id="format">
-      <option value="markdown">Markdown (.md)</option>
-      <option value="text">Plain text (.txt)</option>
-      <option value="json">JSON (.json)</option>
-    </select>
-  </label>
-  <button id="saveSettings">Save Settings</button>
-  <label class="inline"><input type="checkbox" id="debug" />Enable debug logging</label>
-  <button id="runTests">Run Tests</button>
-  <button id="saveMarkdown">Save tab contents as...</button>
-  <div id="status"></div>
-  <div id="version" style="margin-top:8px;color:#666;font-size:smaller"></div>
+  <div class="container">
+    <label>API Key
+      <input type="password" id="apiKey" placeholder="Enter API key" />
+    </label>
+    <label>Model
+      <input type="text" id="model" placeholder="mistral-ocr-latest" />
+    </label>
+    <label>Language (optional)
+      <input type="text" id="language" placeholder="e.g., en, fr, zh" />
+      <small>Optional language hint like "en" for English. Leave blank to autodetect.</small>
+    </label>
+    <label>Output Format
+      <select id="format">
+        <option value="markdown">Markdown (.md)</option>
+        <option value="text">Plain text (.txt)</option>
+        <option value="json">JSON (.json)</option>
+      </select>
+    </label>
+    <button id="saveSettings">Save Settings</button>
+    <label class="inline"><input type="checkbox" id="debug" />Enable debug logging</label>
+    <button id="runTests">Run Tests</button>
+    <button id="saveMarkdown">Save tab contents as...</button>
+    <div id="status"></div>
+    <div id="version" style="margin-top:8px;color:#666;font-size:smaller"></div>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

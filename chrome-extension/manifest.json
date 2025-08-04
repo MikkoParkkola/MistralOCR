@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mistral OCR Markdown Saver",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Save page or selection to Markdown via Mistral OCR",
   "permissions": [
     "activeTab",
