@@ -95,18 +95,31 @@ if Flask is not None:
             return auth_header[7:]
         return request.headers.get("X-API-Key")
 
+    # Default headers emulate a regular browser request.  The Mistral API can
+    # return 403 if these are missing entirely, so the middleware injects
+    # sensible values when the client omits them.
+    DEFAULT_ORIGIN = "https://api.mistral.ai"
+    DEFAULT_REFERER = DEFAULT_ORIGIN + "/"
+    DEFAULT_UA = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+
     def _build_upstream_headers(api_key: str) -> dict[str, str]:
         """Return headers forwarded to the Mistral API.
 
-        Only propagate ``Origin``/``Referer``/``User-Agent`` if the client
-        supplied them.  Earlier versions invented default values which caused
-        the upstream API to reject requests from some environments.
+        ``requests`` sends a very distinctive default ``User-Agent`` and omits
+        ``Origin``/``Referer``.  Some environments interpret this as an
+        automated script and respond with ``403``.  To mirror the extension's
+        behaviour we always send browser-like defaults but still honour any
+        headers explicitly provided by the client.
         """
 
         headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
-        for hdr in ("Origin", "Referer", "User-Agent"):
-            if value := request.headers.get(hdr):
-                headers[hdr] = value
+        headers["Origin"] = request.headers.get("Origin", DEFAULT_ORIGIN)
+        headers["Referer"] = request.headers.get("Referer", DEFAULT_REFERER)
+        headers["User-Agent"] = request.headers.get("User-Agent", DEFAULT_UA)
         return headers
 
 if app is not None:

@@ -52,7 +52,7 @@ def test_health_forwards_origin_header(monkeypatch):
     assert captured['headers']['Referer'] == origin
 
 
-def test_health_omits_origin_when_missing(monkeypatch):
+def test_health_injects_defaults_when_missing(monkeypatch):
     captured = {}
 
     def fake_get(url, headers, timeout):
@@ -69,5 +69,6 @@ def test_health_omits_origin_when_missing(monkeypatch):
         headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
     )
     assert resp.status_code == 200
-    assert 'Origin' not in captured['headers']
-    assert 'Referer' not in captured['headers']
+    assert captured['headers']['Origin'] == server.DEFAULT_ORIGIN
+    assert captured['headers']['Referer'] == server.DEFAULT_REFERER
+    assert captured['headers']['User-Agent'] == server.DEFAULT_UA
