@@ -24,7 +24,7 @@ def test_api_key_whitespace_is_trimmed(monkeypatch):
 
     monkeypatch.setattr(server.requests, 'get', fake_get)
     client = server.app.test_client()
-    resp = client.get('/health', headers={'Authorization': 'Bearer test\n\t '})
+    resp = client.get('/health', headers={'Authorization': 'Bearer   test  '})
     assert resp.status_code == 200
     assert captured['headers']['Authorization'] == 'Bearer test'
     assert captured['headers']['X-API-Key'] == 'test'

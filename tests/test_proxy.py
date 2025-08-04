@@ -22,11 +22,14 @@ def test_proxy_missing_api_key_returns_401():
     assert resp.headers.get('Access-Control-Allow-Origin') == '*'
 
 
-def test_proxy_forwards_origin_header(monkeypatch):
+def test_proxy_strips_sensitive_headers(monkeypatch):
     captured = {}
 
-    def fake_get(url, headers, timeout, proxies):
-        captured['headers'] = headers
+    def fake_get(url, **kwargs):
+        captured['headers'] = kwargs.get('headers', {})
+        proxies = kwargs.get('proxies')
+        if proxies is not None:
+            captured['proxies'] = proxies
         class Resp:
             status_code = 200
             text = '{}'
@@ -44,43 +47,21 @@ def test_proxy_forwards_origin_header(monkeypatch):
             'X-API-Key': 'test',
             'Origin': origin,
             'Referer': origin,
+            'User-Agent': 'tester',
         },
     )
     assert resp.status_code == 200
-    assert captured['headers']['Origin'] == origin
-    assert captured['headers']['Referer'] == origin
-
-
-def test_proxy_omits_unsupplied_headers(monkeypatch):
-    captured = {}
-
-    def fake_get(url, headers, timeout, proxies):
-        captured['headers'] = headers
-        class Resp:
-            status_code = 200
-            text = '{}'
-            headers = {}
-            content = b'{}'
-        return Resp()
-
-    monkeypatch.setattr(server.requests, 'get', fake_get)
-    client = server.app.test_client()
-    resp = client.get(
-        '/v1/models',
-        headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
-    )
-    assert resp.status_code == 200
-    # Only auth headers should be forwarded when client omits optional ones
-    assert 'Origin' not in captured['headers']
-    assert 'Referer' not in captured['headers']
-    assert 'User-Agent' not in captured['headers']
+    assert captured['headers'] == {
+        'Authorization': 'Bearer test',
+        'X-API-Key': 'test',
+    }
 
 
 def test_proxy_disables_system_proxies(monkeypatch):
     called = {}
 
-    def fake_get(url, headers, timeout, proxies):
-        called['proxies'] = proxies
+    def fake_get(url, **kwargs):
+        called['proxies'] = kwargs.get('proxies')
         class Resp:
             status_code = 200
             text = '{}'

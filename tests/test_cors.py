@@ -25,7 +25,7 @@ def test_health_allows_extension_origin():
     assert 'X-API-Key' in allow_headers
 
 
-def test_health_forwards_origin_header(monkeypatch):
+def test_health_strips_sensitive_headers(monkeypatch):
     captured = {}
 
     def fake_get(url, headers, timeout, proxies):
@@ -45,33 +45,14 @@ def test_health_forwards_origin_header(monkeypatch):
             'X-API-Key': 'test',
             'Origin': origin,
             'Referer': origin,
+            'User-Agent': 'tester',
         },
     )
     assert resp.status_code == 200
-    assert captured['headers']['Origin'] == origin
-    assert captured['headers']['Referer'] == origin
-
-
-def test_health_omits_unsupplied_headers(monkeypatch):
-    captured = {}
-
-    def fake_get(url, headers, timeout, proxies):
-        captured['headers'] = headers
-        class Resp:
-            status_code = 200
-            text = 'ok'
-        return Resp()
-
-    monkeypatch.setattr(server.requests, 'get', fake_get)
-    client = server.app.test_client()
-    resp = client.get(
-        '/health',
-        headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
-    )
-    assert resp.status_code == 200
-    assert 'Origin' not in captured['headers']
-    assert 'Referer' not in captured['headers']
-    assert 'User-Agent' not in captured['headers']
+    assert captured['headers'] == {
+        'Authorization': 'Bearer test',
+        'X-API-Key': 'test',
+    }
 
 
 def test_health_disables_system_proxies(monkeypatch):

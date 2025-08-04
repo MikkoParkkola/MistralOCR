@@ -97,29 +97,29 @@ if Flask is not None:
         return key.strip() if key else None
 
     def _build_upstream_headers(api_key: str) -> dict[str, str]:
-        """Return headers forwarded to the Mistral API.
+        """Return a minimal set of headers for upstream requests.
 
-        In practice the safest behaviour is to mirror the client's request
-        as closely as possible.  Some API gateways apply strict checks on
-        seemingly irrelevant headers such as ``User-Agent`` or ``Accept`` and
-        respond with ``403`` when they do not resemble a browser request.  The
-        original implementation only forwarded a small, hand picked set of
-        headers which meant the upstream call looked unlike the browser's
-        direct call, leading to the persistent 403 responses seen by users.
+        Forwarding every header from the browser turned out to be brittle:
+        some security services compare values such as ``User-Agent`` or the
+        various ``Sec-*`` hints against the TLS fingerprint of the request and
+        return ``403`` if they do not match the expected browser profile.  To
+        avoid these false positives the proxy now sends only a conservative set
+        of headers required by the API.
 
-        This helper copies *all* incoming headers except for hop-by-hop ones
-        that are either meaningless or actively harmful when sent upstream.
-        The Authorization headers are rebuilt from the parsed API key to avoid
-        accidentally forwarding whitespace or other artefacts.
+        ``Authorization`` is rebuilt from the parsed key to guarantee the
+        correct format and ``X-API-Key`` is forwarded for compatibility.  When
+        the client provides ``Accept`` or ``Content-Type`` headers they are
+        relayed as they legitimately influence the response.  Everything else is
+        intentionally dropped.
         """
 
-        excluded = {"host", "content-length", "content-encoding", "connection"}
         headers = {
-            k: v for k, v in request.headers.items() if k.lower() not in excluded
+            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,
         }
-        # Normalise auth headers so any surrounding whitespace is removed
-        headers["Authorization"] = f"Bearer {api_key}"
-        headers["X-API-Key"] = api_key
+        for name in ("Accept", "Content-Type"):
+            if value := request.headers.get(name):
+                headers[name] = value
         return headers
 
 if app is not None:
@@ -214,8 +214,9 @@ if app is not None:
         headers = _build_upstream_headers(api_key)
         url = f"https://api.mistral.ai/v1/{path}"
         try:
-            upstream = requests.request(
-                request.method,
+            method = request.method.lower()
+            req_func = getattr(requests, method)
+            upstream = req_func(
                 url,
                 params=request.args,
                 data=request.get_data(),
