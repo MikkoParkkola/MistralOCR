@@ -41,7 +41,10 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
     try {
       debugLog("fetchWithRetry request", {
         url,
-        options: { ...options, headers: scrubHeaders(options.headers) },
+        options: {
+          ...options,
+          headers: scrubHeaders(options.headers),
+        },
         attempt,
       });
       const controller = new AbortController();
@@ -49,7 +52,20 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       const resp = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timeoutId);
-      debugLog("fetchWithRetry response", { url, status: resp.status });
+      if (debugEnabled) {
+        const respClone = resp.clone();
+        let body = "";
+        try {
+          body = await respClone.text();
+        } catch (e) {
+          body = "<unreadable>";
+        }
+        debugLog("fetchWithRetry response", {
+          url,
+          status: resp.status,
+          body,
+        });
+      }
       if (!resp.ok && attempt < retries && resp.status >= 500) {
         debugLog(`Fetch ${url} failed with status ${resp.status}, retrying...`);
         await new Promise((r) => setTimeout(r, backoff * 2 ** attempt));
@@ -67,19 +83,39 @@ async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
 
 async function sendMessageWithInjection(tabId, message) {
   debugLog("sendMessage", { tabId, message });
+  const send = () =>
+    new Promise((resolve, reject) => {
+      try {
+        chrome.tabs.sendMessage(tabId, message, (resp) => {
+          const err = chrome.runtime.lastError;
+          if (err) {
+            reject(new Error(err.message));
+          } else {
+            resolve(resp);
+          }
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
   try {
-    const resp = await chrome.tabs.sendMessage(tabId, message);
+    const resp = await send();
     debugLog("sendMessage response", resp);
     return resp;
   } catch (e) {
     debugLog("Injecting content script into tab", tabId, e);
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["content.js"],
-    });
-    const resp = await chrome.tabs.sendMessage(tabId, message);
-    debugLog("sendMessage response after injection", resp);
-    return resp;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content.js"],
+      });
+      const resp = await send();
+      debugLog("sendMessage response after injection", resp);
+      return resp;
+    } catch (err) {
+      errorLog("sendMessage failed after injection", err);
+      return null;
+    }
   }
 }
 
@@ -104,7 +140,7 @@ async function getSettings() {
 async function fetchAndOCR(tab, settings) {
   const { apiKey, model, language, format } = settings;
   try {
-  log("Fetching tab for OCR", tab.url);
+    debugLog("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
     const blob = await resp.blob();
     const arrayBuffer = await blob.arrayBuffer();
@@ -115,9 +151,10 @@ async function fetchAndOCR(tab, settings) {
       headers["Authorization"] = `Bearer ${apiKey}`;
       headers["X-API-Key"] = apiKey;
     }
-    log("OCR request", {
+    debugLog("OCR request", {
       url: "http://127.0.0.1:5000/ocr",
       headers: scrubHeaders(headers),
+      body: { model, language, format, fileLength: dataUrl.length },
     });
     const ocrResp = await fetchWithRetry(
       "http://127.0.0.1:5000/ocr",
@@ -129,13 +166,21 @@ async function fetchAndOCR(tab, settings) {
       },
       2
     );
-    log("OCR response status", ocrResp.status);
+    const rawBody = await ocrResp.text();
+    debugLog("OCR response raw", { status: ocrResp.status, body: rawBody });
     if (!ocrResp.ok) {
-      log("OCR error body", await ocrResp.text());
       return "";
     }
-    const data = await ocrResp.json();
-    return data.text || data.markdown || "";
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch (e) {
+      errorLog("Failed to parse OCR response", e);
+      return "";
+    }
+    const result = data.text || data.markdown || "";
+    debugLog("OCR result", result);
+    return result;
   } catch (e) {
     errorLog("OCR request failed", e);
     return "";
@@ -197,8 +242,10 @@ async function processTab(tab, preferSelection) {
     if (format === "text" && content) {
       content = markdownToText(content);
     }
-    if (content && content.trim()) {
-      return await downloadContent(content, filename, format);
+  if (content && content.trim()) {
+      const ok = await downloadContent(content, filename, format);
+      debugLog("downloadContent result", { ok, filename, format });
+      return ok;
     }
   } catch (e) {
     errorLog("Processing tab failed", e);
@@ -229,6 +276,8 @@ async function runTests() {
       if (resp && resp.markdown) {
         results.push("Content script accessible");
         contentOk = true;
+      } else if (resp === null) {
+        results.push("Content script unreachable");
       } else {
         results.push("Content script returned empty");
       }
@@ -284,19 +333,36 @@ async function runTests() {
 }
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  log("onMessage received", req.type);
   if (req.type === "saveTab") {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      const tab = tabs[0];
-      let ok = false;
-      if (tab && tab.id !== undefined) {
-        ok = await processTab(tab, true);
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        let ok = false;
+        if (tab && tab.id !== undefined) {
+          ok = await processTab(tab, true);
+        }
+        debugLog("saveTab response", { ok });
+        sendResponse({ ok });
+      } catch (e) {
+        errorLog("processTab failed", e);
+        sendResponse({ ok: false, error: e.message });
       }
-      sendResponse({ ok });
-    });
+    })();
     return true;
   }
   if (req.type === "runTests") {
-    runTests().then(sendResponse);
+    runTests()
+      .then((res) => {
+        debugLog("runTests response", res);
+        sendResponse(res);
+      })
+      .catch((e) => {
+        errorLog("runTests failed", e);
+        sendResponse({ passed: false, details: ["Exception: " + e.message] });
+      });
     return true;
   }
+  debugLog("Unknown message type", req.type);
+  sendResponse();
 });

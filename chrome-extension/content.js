@@ -71,12 +71,20 @@ function getSelectionMarkdown() {
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
   console.log("mistralocr: content script request", req.type);
-  if (req.type === "getPage") {
-    sendResponse({ markdown: getPageMarkdown() });
-  } else if (req.type === "getSelection") {
-    sendResponse({ markdown: getSelectionMarkdown() });
+  try {
+    if (req.type === "getPage") {
+      const markdown = getPageMarkdown();
+      console.log("mistralocr: content script response getPage", { length: markdown.length });
+      sendResponse({ markdown });
+    } else if (req.type === "getSelection") {
+      const markdown = getSelectionMarkdown();
+      console.log("mistralocr: content script response getSelection", { length: markdown.length });
+      sendResponse({ markdown });
+    }
+  } catch (e) {
+    console.log("mistralocr: content script error", e);
+    sendResponse({ markdown: "" });
   }
-  return true;
 });
 
 //# sourceURL=content.js

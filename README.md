@@ -53,8 +53,8 @@ missing or rejected.
    model, optional language hint, and desired output format, then click
    **Save Settings**. The popup shows the extension version at the bottom.
    From the popup you can run **Run Tests** to verify the connection to the
-   content script and local OCR server, and click **Save** to save the active
-   tab or current selection.
+   content script and local OCR server, and click **Save tab contents as...** to
+   save the active tab or current selection.
 4. Right–click a page or selection and choose **Save Page** or
    **Save Selection** if you prefer using context menus.
 
