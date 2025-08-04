@@ -18,5 +18,9 @@
     "default_title": "Save to Markdown",
     "default_popup": "popup.html"
   },
-  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://api.mistral.ai/*"
+  ]
 }
