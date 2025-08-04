@@ -338,20 +338,24 @@ async function runTests() {
   let apiReachable = false;
   let apiAuthorized = false;
   let modelsListed = false;
+  let apiModelsData = null;
+  let apiRequest = null;
   try {
-    const headers = buildAuthHeaders(apiKey, true);
-    if (apiKey) {
-      results.push("API request headers set");
-    } else {
-      results.push("API request missing key headers");
-    }
-    const apiUrl = "https://api.mistral.ai/v1/models";
-    results.push(`Using API endpoint ${apiUrl}`);
-    log("runTests: Mistral API request", {
-      url: apiUrl,
-      headers: scrubHeaders(headers),
-    });
-    const resp = await fetchWithRetry(apiUrl, { headers, timeout: 5000 }, 1);
+      const headers = buildAuthHeaders(apiKey, true);
+      if (apiKey) {
+        results.push("API request headers set");
+      } else {
+        results.push("API request missing key headers");
+      }
+      const apiUrl = "https://api.mistral.ai/v1/models";
+      results.push(`Using API endpoint ${apiUrl}`);
+      apiRequest = { method: "GET", headers: scrubHeaders(headers) };
+      log("runTests: Mistral API request", { url: apiUrl, ...apiRequest });
+      const resp = await fetchWithRetry(
+        apiUrl,
+        { method: "GET", headers, timeout: 5000 },
+        1
+      );
     apiReachable = true;
     const body = await resp.text();
     log("runTests: Mistral API response", {
@@ -363,6 +367,7 @@ async function runTests() {
       results.push("Mistral API authorized");
       try {
         const data = JSON.parse(body);
+        apiModelsData = data;
         if (Array.isArray(data.data) && data.data.length > 0) {
           modelsListed = true;
           results.push(`Models listed: ${data.data.length}`);
@@ -386,16 +391,25 @@ async function runTests() {
   }
 
   let middlewareModelsOk = false;
-  if (serverReachable) {
+  let middlewareRequestMatch = false;
+  if (serverReachable && apiAuthorized && modelsListed) {
     try {
-      const headers = buildAuthHeaders(apiKey);
+      const headers = buildAuthHeaders(apiKey, true);
+      const mReq = { method: "GET", headers: scrubHeaders(headers) };
       log("runTests: middleware models request", {
         url: "http://127.0.0.1:5000/v1/models",
-        headers: scrubHeaders(headers),
+        ...mReq,
       });
+      if (apiRequest && JSON.stringify(mReq) === JSON.stringify(apiRequest)) {
+        middlewareRequestMatch = true;
+        results.push("Middleware request matches direct");
+      } else {
+        results.push("Middleware request mismatch");
+        errorLog("Middleware request mismatch", { direct: apiRequest, middleware: mReq });
+      }
       const mResp = await fetchWithRetry(
         "http://127.0.0.1:5000/v1/models",
-        { headers, timeout: 5000 },
+        { method: "GET", headers, timeout: 5000 },
         1
       );
       const mBody = await mResp.text();
@@ -406,11 +420,16 @@ async function runTests() {
       if (mResp.status === 200) {
         try {
           const data = JSON.parse(mBody);
-          if (Array.isArray(data.data) && data.data.length > 0) {
+          if (JSON.stringify(data) === JSON.stringify(apiModelsData)) {
             middlewareModelsOk = true;
-            results.push(`Middleware models listed: ${data.data.length}`);
+            const count = Array.isArray(data.data) ? data.data.length : 0;
+            results.push(`Middleware models match API: ${count}`);
           } else {
-            results.push("Middleware returned no models");
+            results.push("Middleware models mismatch");
+            errorLog("Middleware models mismatch", {
+              api: apiModelsData,
+              middleware: data,
+            });
           }
         } catch (e) {
           results.push("Middleware models parse failed");
@@ -427,6 +446,8 @@ async function runTests() {
       results.push("Middleware models request failed");
       errorLog("Middleware models request failed", e);
     }
+  } else if (serverReachable) {
+    results.push("Skipping middleware models test: direct API failed");
   }
   const passed =
     apiKeyOk &&
@@ -436,7 +457,8 @@ async function runTests() {
     apiReachable &&
     apiAuthorized &&
     modelsListed &&
-    middlewareModelsOk;
+    middlewareModelsOk &&
+    middlewareRequestMatch;
   log("runTests: results", results, "passed:", passed);
   return { passed, details: results };
 }
