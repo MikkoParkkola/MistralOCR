@@ -36,6 +36,17 @@ function scrubHeaders(headers = {}) {
   return clean;
 }
 
+function buildAuthHeaders(apiKey, includeXApi = false) {
+  const headers = {};
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    if (includeXApi) {
+      headers["X-API-Key"] = apiKey;
+    }
+  }
+  return headers;
+}
+
 async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -292,11 +303,7 @@ async function runTests() {
   let serverReachable = false;
   let serverAuthorized = false;
   try {
-    const headers = {};
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
-    }
+    const headers = buildAuthHeaders(apiKey);
     log("runTests: health check request", {
       url: "http://127.0.0.1:5000/health",
       headers: scrubHeaders(headers),
@@ -312,22 +319,124 @@ async function runTests() {
       status: health.status,
       body,
     });
-    results.push("OCR server reachable");
+    results.push("Middleware reachable");
     if (health.status === 200) {
       serverAuthorized = true;
-      results.push("OCR server authorized");
+      results.push("Middleware authorized");
     } else if (health.status === 401 || health.status === 403) {
-      results.push(`OCR server unauthorized: ${health.status}`);
-      errorLog("OCR server unauthorized", body);
+      results.push(`Middleware unauthorized: ${health.status}`);
+      errorLog("Middleware unauthorized", body);
     } else {
-      results.push(`OCR server error: ${health.status}`);
-      errorLog("OCR server error", health.status, body);
+      results.push(`Middleware error: ${health.status}`);
+      errorLog("Middleware error", health.status, body);
     }
   } catch (e) {
-    results.push("OCR server unreachable");
+    results.push("Middleware unreachable");
     errorLog("Health check failed", e);
   }
-  const passed = apiKeyOk && contentOk && serverReachable && serverAuthorized;
+
+  let apiReachable = false;
+  let apiAuthorized = false;
+  let modelsListed = false;
+  try {
+    const headers = buildAuthHeaders(apiKey, true);
+    if (apiKey) {
+      results.push("API request headers set");
+    } else {
+      results.push("API request missing key headers");
+    }
+    const apiUrl = "https://api.mistral.ai/v1/models";
+    results.push(`Using API endpoint ${apiUrl}`);
+    log("runTests: Mistral API request", {
+      url: apiUrl,
+      headers: scrubHeaders(headers),
+    });
+    const resp = await fetchWithRetry(apiUrl, { headers, timeout: 5000 }, 1);
+    apiReachable = true;
+    const body = await resp.text();
+    log("runTests: Mistral API response", {
+      status: resp.status,
+      body,
+    });
+    if (resp.status === 200) {
+      apiAuthorized = true;
+      results.push("Mistral API authorized");
+      try {
+        const data = JSON.parse(body);
+        if (Array.isArray(data.data) && data.data.length > 0) {
+          modelsListed = true;
+          results.push(`Models listed: ${data.data.length}`);
+        } else {
+          results.push("Mistral API returned no models");
+        }
+      } catch (e) {
+        results.push("Failed to parse models list");
+        errorLog("Parsing models list failed", e);
+      }
+    } else if (resp.status === 401 || resp.status === 403) {
+      results.push(`Mistral API unauthorized: ${resp.status}`);
+      errorLog("Mistral API unauthorized", body);
+    } else {
+      results.push(`Mistral API error: ${resp.status}`);
+      errorLog("Mistral API error", resp.status, body);
+    }
+  } catch (e) {
+    results.push("Mistral API unreachable");
+    errorLog("Mistral API request failed", e);
+  }
+
+  let middlewareModelsOk = false;
+  if (serverReachable) {
+    try {
+      const headers = buildAuthHeaders(apiKey);
+      log("runTests: middleware models request", {
+        url: "http://127.0.0.1:5000/v1/models",
+        headers: scrubHeaders(headers),
+      });
+      const mResp = await fetchWithRetry(
+        "http://127.0.0.1:5000/v1/models",
+        { headers, timeout: 5000 },
+        1
+      );
+      const mBody = await mResp.text();
+      log("runTests: middleware models response", {
+        status: mResp.status,
+        body: mBody,
+      });
+      if (mResp.status === 200) {
+        try {
+          const data = JSON.parse(mBody);
+          if (Array.isArray(data.data) && data.data.length > 0) {
+            middlewareModelsOk = true;
+            results.push(`Middleware models listed: ${data.data.length}`);
+          } else {
+            results.push("Middleware returned no models");
+          }
+        } catch (e) {
+          results.push("Middleware models parse failed");
+          errorLog("Parsing middleware models failed", e);
+        }
+      } else if (mResp.status === 401 || mResp.status === 403) {
+        results.push(`Middleware unauthorized: ${mResp.status}`);
+        errorLog("Middleware models unauthorized", mResp.status, mBody);
+      } else {
+        results.push(`Middleware models error: ${mResp.status}`);
+        errorLog("Middleware models error", mResp.status, mBody);
+      }
+    } catch (e) {
+      results.push("Middleware models request failed");
+      errorLog("Middleware models request failed", e);
+    }
+  }
+  const passed =
+    apiKeyOk &&
+    contentOk &&
+    serverReachable &&
+    serverAuthorized &&
+    apiReachable &&
+    apiAuthorized &&
+    modelsListed &&
+    middlewareModelsOk;
   log("runTests: results", results, "passed:", passed);
   return { passed, details: results };
 }
