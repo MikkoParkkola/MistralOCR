@@ -89,11 +89,12 @@ if Flask is not None:
         """
 
         if data and (key := data.get("api_key")):
-            return key
+            return key.strip() or None
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            return auth_header[7:]
-        return request.headers.get("X-API-Key")
+            return auth_header[7:].strip() or None
+        key = request.headers.get("X-API-Key")
+        return key.strip() if key else None
 
     # Default headers emulate a regular browser request.  The Mistral API can
     # return 403 if these are missing entirely, so the middleware injects
@@ -179,7 +180,10 @@ if app is not None:
         headers = _build_upstream_headers(api_key)
         try:
             resp = requests.get(
-                "https://api.mistral.ai/v1/models", headers=headers, timeout=5
+                "https://api.mistral.ai/v1/models",
+                headers=headers,
+                timeout=5,
+                proxies={},
             )
             snippet = resp.text[:200]
             app.logger.info(
@@ -209,10 +213,16 @@ if app is not None:
         url = f"https://api.mistral.ai/v1/{path}"
         try:
             if request.method == "GET":
-                upstream = requests.get(url, headers=headers, timeout=10)
+                upstream = requests.get(
+                    url, headers=headers, timeout=10, proxies={}
+                )
             else:
                 upstream = requests.post(
-                    url, data=request.get_data(), headers=headers, timeout=10
+                    url,
+                    data=request.get_data(),
+                    headers=headers,
+                    timeout=10,
+                    proxies={},
                 )
             masked = (api_key[:4] + "...") if api_key else "None"
             snippet = upstream.text[:200]

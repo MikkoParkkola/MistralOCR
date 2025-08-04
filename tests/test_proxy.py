@@ -25,7 +25,7 @@ def test_proxy_missing_api_key_returns_401():
 def test_proxy_forwards_origin_header(monkeypatch):
     captured = {}
 
-    def fake_get(url, headers, timeout):
+    def fake_get(url, headers, timeout, proxies):
         captured['headers'] = headers
         class Resp:
             status_code = 200
@@ -54,7 +54,7 @@ def test_proxy_forwards_origin_header(monkeypatch):
 def test_proxy_injects_defaults_when_missing(monkeypatch):
     captured = {}
 
-    def fake_get(url, headers, timeout):
+    def fake_get(url, headers, timeout, proxies):
         captured['headers'] = headers
         class Resp:
             status_code = 200
@@ -73,3 +73,35 @@ def test_proxy_injects_defaults_when_missing(monkeypatch):
     assert captured['headers']['Origin'] == server.DEFAULT_ORIGIN
     assert captured['headers']['Referer'] == server.DEFAULT_REFERER
     assert captured['headers']['User-Agent'] == server.DEFAULT_UA
+
+
+def test_proxy_disables_system_proxies(monkeypatch):
+    called = {}
+
+    def fake_get(url, headers, timeout, proxies):
+        called['proxies'] = proxies
+        class Resp:
+            status_code = 200
+            text = '{}'
+            headers = {}
+            content = b'{}'
+        return Resp()
+
+    monkeypatch.setattr(server.requests, 'get', fake_get)
+    client = server.app.test_client()
+    resp = client.get(
+        '/v1/models',
+        headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
+    )
+    assert resp.status_code == 200
+    assert called['proxies'] == {}
+
+
+def test_proxy_options_preflight_returns_cors_headers():
+    client = server.app.test_client()
+    resp = client.options('/v1/models')
+    assert resp.status_code == 204
+    assert resp.headers.get('Access-Control-Allow-Origin') == '*'
+    allow_headers = resp.headers.get('Access-Control-Allow-Headers', '')
+    assert 'Authorization' in allow_headers
+    assert 'X-API-Key' in allow_headers
