@@ -22,14 +22,23 @@ except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't i
 
 try:  # pragma: no cover - optional dependency
     from flask import Flask, request, jsonify  # type: ignore
-    from flask_cors import CORS  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - allow import without flask
     Flask = None  # type: ignore[assignment]
     request = None  # type: ignore[assignment]
+
     def jsonify(obj):  # type: ignore[override]
         raise ModuleNotFoundError("flask not installed")
-    def CORS(app):  # type: ignore
-        raise ModuleNotFoundError("flask not installed")
+
+# ``flask_cors`` is optional.  In some environments it rejects the
+# ``chrome-extension://`` origin used by the browser extension which results
+# in confusing 403 responses.  To keep behaviour consistent we do not depend
+# on its origin checks and instead add the CORS headers manually further
+# below.  Importing here is only for backward compatibility when the package
+# is installed; failure to import is harmless.
+try:  # pragma: no cover - optional dependency
+    from flask_cors import CORS  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    CORS = None  # type: ignore[assignment]
 
 # Dynamically import the existing mistral-ocr.py as a module
 MODULE_PATH = Path(__file__).resolve().parent / "mistral-ocr.py"
@@ -45,12 +54,34 @@ args, _ = parser.parse_known_args()
 
 app = Flask(__name__) if Flask is not None else None
 if Flask is not None:
-    CORS(app)
     if args.debug:
         logging.basicConfig(level=logging.DEBUG, format="mistralocr: %(message)s")
     else:
         logging.basicConfig(level=logging.INFO, format="mistralocr: %(message)s")
     app.logger.setLevel(logging.getLogger().level)
+
+    # Add very permissive CORS headers so the browser extension can talk to
+    # the server regardless of its origin.  This replaces the behaviour of
+    # ``flask_cors`` which can reject unknown schemes such as
+    # ``chrome-extension://``.
+    @app.after_request
+    def _add_cors_headers(resp):
+        resp.headers.setdefault("Access-Control-Allow-Origin", "*")
+        resp.headers.setdefault(
+            "Access-Control-Allow-Headers",
+            "Authorization,Content-Type,X-API-Key",
+        )
+        resp.headers.setdefault(
+            "Access-Control-Allow-Methods", "GET,POST,OPTIONS"
+        )
+        return resp
+
+    @app.before_request
+    def _handle_options():
+        if request.method == "OPTIONS":
+            # A minimal response is enough for browsers to continue the
+            # request.  Headers are added by ``_add_cors_headers`` above.
+            return "", 204
 
 if app is not None:
     @app.post("/ocr")
