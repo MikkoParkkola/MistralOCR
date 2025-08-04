@@ -36,6 +36,17 @@ function scrubHeaders(headers = {}) {
   return clean;
 }
 
+function buildAuthHeaders(apiKey, includeXApi = false) {
+  const headers = {};
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+    if (includeXApi) {
+      headers["X-API-Key"] = apiKey;
+    }
+  }
+  return headers;
+}
+
 async function fetchWithRetry(url, options = {}, retries = 2, backoff = 500) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -292,11 +303,7 @@ async function runTests() {
   let serverReachable = false;
   let serverAuthorized = false;
   try {
-    const headers = {};
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
-    }
+    const headers = buildAuthHeaders(apiKey);
     log("runTests: health check request", {
       url: "http://127.0.0.1:5000/health",
       headers: scrubHeaders(headers),
@@ -332,10 +339,8 @@ async function runTests() {
   let apiAuthorized = false;
   let modelsListed = false;
   try {
-    const headers = {};
+    const headers = buildAuthHeaders(apiKey, true);
     if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
       results.push("API request headers set");
     } else {
       results.push("API request missing key headers");
@@ -383,11 +388,7 @@ async function runTests() {
   let middlewareModelsOk = false;
   if (serverReachable) {
     try {
-      const headers = {};
-      if (apiKey) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-        headers["X-API-Key"] = apiKey;
-      }
+      const headers = buildAuthHeaders(apiKey);
       log("runTests: middleware models request", {
         url: "http://127.0.0.1:5000/v1/models",
         headers: scrubHeaders(headers),
