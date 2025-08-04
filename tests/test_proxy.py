@@ -51,7 +51,7 @@ def test_proxy_forwards_origin_header(monkeypatch):
     assert captured['headers']['Referer'] == origin
 
 
-def test_proxy_injects_defaults_when_missing(monkeypatch):
+def test_proxy_omits_unsupplied_headers(monkeypatch):
     captured = {}
 
     def fake_get(url, headers, timeout, proxies):
@@ -70,9 +70,10 @@ def test_proxy_injects_defaults_when_missing(monkeypatch):
         headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
     )
     assert resp.status_code == 200
-    assert captured['headers']['Origin'] == server.DEFAULT_ORIGIN
-    assert captured['headers']['Referer'] == server.DEFAULT_REFERER
-    assert captured['headers']['User-Agent'] == server.DEFAULT_UA
+    # Only auth headers should be forwarded when client omits optional ones
+    assert 'Origin' not in captured['headers']
+    assert 'Referer' not in captured['headers']
+    assert 'User-Agent' not in captured['headers']
 
 
 def test_proxy_disables_system_proxies(monkeypatch):
