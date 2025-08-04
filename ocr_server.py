@@ -22,14 +22,23 @@ except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't i
 
 try:  # pragma: no cover - optional dependency
     from flask import Flask, request, jsonify  # type: ignore
-    from flask_cors import CORS  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - allow import without flask
     Flask = None  # type: ignore[assignment]
     request = None  # type: ignore[assignment]
+
     def jsonify(obj):  # type: ignore[override]
         raise ModuleNotFoundError("flask not installed")
-    def CORS(app):  # type: ignore
-        raise ModuleNotFoundError("flask not installed")
+
+# ``flask_cors`` is optional.  In some environments it rejects the
+# ``chrome-extension://`` origin used by the browser extension which results
+# in confusing 403 responses.  To keep behaviour consistent we do not depend
+# on its origin checks and instead add the CORS headers manually further
+# below.  Importing here is only for backward compatibility when the package
+# is installed; failure to import is harmless.
+try:  # pragma: no cover - optional dependency
+    from flask_cors import CORS  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    CORS = None  # type: ignore[assignment]
 
 # Dynamically import the existing mistral-ocr.py as a module
 MODULE_PATH = Path(__file__).resolve().parent / "mistral-ocr.py"
@@ -45,12 +54,60 @@ args, _ = parser.parse_known_args()
 
 app = Flask(__name__) if Flask is not None else None
 if Flask is not None:
-    CORS(app)
     if args.debug:
         logging.basicConfig(level=logging.DEBUG, format="mistralocr: %(message)s")
     else:
         logging.basicConfig(level=logging.INFO, format="mistralocr: %(message)s")
     app.logger.setLevel(logging.getLogger().level)
+
+    # Add very permissive CORS headers so the browser extension can talk to
+    # the server regardless of its origin.  This replaces the behaviour of
+    # ``flask_cors`` which can reject unknown schemes such as
+    # ``chrome-extension://``.
+    @app.after_request
+    def _add_cors_headers(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = (
+            "Authorization,Content-Type,X-API-Key"
+        )
+        resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        return resp
+
+    @app.before_request
+    def _handle_options():
+        if request.method == "OPTIONS":
+            # A minimal response is enough for browsers to continue the
+            # request.  Headers are added by ``_add_cors_headers`` above.
+            return "", 204
+
+    def _get_api_key(data: dict | None = None) -> str | None:
+        """Extract API key from JSON payload or headers.
+
+        The browser extension may send the key via JSON body, the
+        ``Authorization`` header or the legacy ``X-API-Key`` header.  This
+        helper consolidates the logic so all endpoints behave consistently.
+        """
+
+        if data and (key := data.get("api_key")):
+            return key
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return auth_header[7:]
+        return request.headers.get("X-API-Key")
+
+    def _build_upstream_headers(api_key: str) -> dict[str, str]:
+        """Return headers forwarded to the Mistral API.
+
+        Only propagate ``Origin``/``Referer``/``User-Agent`` if the client
+        supplied them.  Earlier versions invented default values which caused
+        the upstream API to reject requests from some environments.
+        """
+
+        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
+        for hdr in ("Origin", "Referer", "User-Agent"):
+            if value := request.headers.get(hdr):
+                headers[hdr] = value
+        return headers
 
 if app is not None:
     @app.post("/ocr")
@@ -61,11 +118,7 @@ if app is not None:
         model = data.get("model")
         language = data.get("language")
         output_format = data.get("format", "markdown")
-        # Accept API key via JSON or Authorization header (fall back to X-API-Key for backward compatibility)
-        api_key = data.get("api_key") or request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
+        api_key = _get_api_key(data)
         if args.debug:
             masked = (api_key[:4] + "...") if api_key else "None"
             app.logger.debug("OCR request headers: %s", dict(request.headers))
@@ -105,15 +158,12 @@ if app is not None:
 
     @app.get("/health")
     def health():
-        api_key = request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
+        api_key = _get_api_key()
         masked = (api_key[:4] + "...") if api_key else "None"
         app.logger.info("Health check, api key: %s", masked)
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
-        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
+        headers = _build_upstream_headers(api_key)
         try:
             resp = requests.get(
                 "https://api.mistral.ai/v1/models", headers=headers, timeout=5
@@ -139,16 +189,10 @@ if app is not None:
         Propagates Authorization and X-API-Key headers from the client and logs
         the upstream response when running with --debug to aid troubleshooting.
         """
-        api_key = request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
-        headers = {}
-        if api_key:
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "X-API-Key": api_key,
-            }
+        api_key = _get_api_key()
+        if not api_key:
+            return jsonify({"error": "missing api key"}), 401
+        headers = _build_upstream_headers(api_key)
         url = f"https://api.mistral.ai/v1/{path}"
         try:
             if request.method == "GET":
