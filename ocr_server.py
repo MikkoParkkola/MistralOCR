@@ -114,9 +114,11 @@ if app is not None:
             app.logger.debug("Health check, api key: %s", masked)
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
-        headers = {"Authorization": f"Bearer {api_key}"}
+        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
         try:
-            resp = requests.get("https://api.mistral.ai/v1/models", headers=headers, timeout=5)
+            resp = requests.get(
+                "https://api.mistral.ai/v1/models", headers=headers, timeout=5
+            )
             if resp.status_code == 200:
                 return jsonify({"status": "ok"})
             app.logger.error("Health upstream failure: %s %s", resp.status_code, resp.text)

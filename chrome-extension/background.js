@@ -303,7 +303,7 @@ async function runTests() {
   let serverReachable = false;
   let serverAuthorized = false;
   try {
-    const headers = buildAuthHeaders(apiKey);
+    const headers = buildAuthHeaders(apiKey, true);
     log("runTests: health check request", {
       url: "http://127.0.0.1:5000/health",
       headers: scrubHeaders(headers),
