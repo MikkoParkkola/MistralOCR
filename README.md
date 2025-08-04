@@ -36,9 +36,10 @@ OCR service when needed. Markdown, plain text, and JSON outputs are supported.
 
 1. Open `chrome://extensions` in Chrome and enable **Developer mode**.
 2. Click **Load unpacked** and select the `chrome-extension` folder.
-3. Click the extension icon to open the popup. Enter your API key, preferred
-   model, optional language hint, and desired output format, then click
-   **Save Settings**. The popup shows the extension version at the bottom.
+3. Click the extension icon to open the popup. Enter your API key, optional
+   language hint, desired output format, and (optionally) a model. If no model
+   is specified, the extension uses `mistral-ocr-latest`. Click **Save Settings**
+   when done. The popup shows the extension version at the bottom.
    From the popup you can run **Run Tests** to verify the connection to the
    content script and Mistral API, and click **Save tab contents as...** to
    save the active tab or current selection.

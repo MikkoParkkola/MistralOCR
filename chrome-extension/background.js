@@ -162,7 +162,8 @@ async function getSettings() {
   const items = await storageGet(["api_key", "model", "language", "format"]);
   return {
     apiKey: items.api_key || "",
-    model: items.model || "",
+    // default to latest model if none stored
+    model: items.model || "mistral-ocr-latest",
     language: items.language || "",
     format: items.format || "markdown",
   };
@@ -182,7 +183,10 @@ async function fetchAndOCR(tab, settings) {
     const document = blob.type.startsWith("image/")
       ? { type: "image_url", image_url: { url: dataUrl } }
       : { type: "document_url", document_url: dataUrl };
-    const body = { document, model, language };
+    const body = { document, model: model || "mistral-ocr-latest" };
+    if (language) {
+      body.language = language;
+    }
     debugLog("OCR request", {
       url: "https://api.mistral.ai/v1/ocr",
       headers: scrubHeaders(headers),
@@ -313,13 +317,17 @@ async function runTests() {
     if (tab && tab.id !== undefined) {
       const resp = await sendMessageWithInjection(tab.id, { type: "getPage" });
       debugLog("runTests: content script response", resp);
-      if (resp && resp.markdown) {
-        results.push("Content script accessible");
+      if (resp && typeof resp.markdown === "string") {
         contentOk = true;
+        if (resp.markdown) {
+          results.push("Content script accessible");
+        } else {
+          results.push("Content script returned empty");
+        }
       } else if (resp === null) {
         results.push("Content script unreachable");
       } else {
-        results.push("Content script returned empty");
+        results.push("Invalid content script response");
       }
     } else {
       results.push("No active tab");
