@@ -238,10 +238,8 @@ function downloadContent(content, filename, format) {
       text: "text/plain",
       json: "application/json",
     }[format] || "text/markdown";
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
+    const url = `data:${mime};charset=utf-8,` + encodeURIComponent(content);
     chrome.downloads.download({ url, filename, saveAs: true }, (id) => {
-      URL.revokeObjectURL(url);
       resolve(!!id);
     });
   });
