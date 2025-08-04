@@ -32,8 +32,11 @@ function log(...args) {
 }
 
 function errorLog(...args) {
-  console.error("mistralocr:", ...args);
-  forwardConsole("error", args);
+  const serialised = args.map((a) =>
+    typeof a === "object" ? JSON.stringify(a) : a
+  );
+  console.error("mistralocr:", ...serialised);
+  forwardConsole("error", serialised);
 }
 
 function debugLog(...args) {
