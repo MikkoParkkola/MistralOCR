@@ -66,14 +66,11 @@ if Flask is not None:
     # ``chrome-extension://``.
     @app.after_request
     def _add_cors_headers(resp):
-        resp.headers.setdefault("Access-Control-Allow-Origin", "*")
-        resp.headers.setdefault(
-            "Access-Control-Allow-Headers",
-            "Authorization,Content-Type,X-API-Key",
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = (
+            "Authorization,Content-Type,X-API-Key"
         )
-        resp.headers.setdefault(
-            "Access-Control-Allow-Methods", "GET,POST,OPTIONS"
-        )
+        resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
         return resp
 
     @app.before_request
@@ -82,6 +79,21 @@ if Flask is not None:
             # A minimal response is enough for browsers to continue the
             # request.  Headers are added by ``_add_cors_headers`` above.
             return "", 204
+
+    def _get_api_key(data: dict | None = None) -> str | None:
+        """Extract API key from JSON payload or headers.
+
+        The browser extension may send the key via JSON body, the
+        ``Authorization`` header or the legacy ``X-API-Key`` header.  This
+        helper consolidates the logic so all endpoints behave consistently.
+        """
+
+        if data and (key := data.get("api_key")):
+            return key
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            return auth_header[7:]
+        return request.headers.get("X-API-Key")
 
 if app is not None:
     @app.post("/ocr")
@@ -92,11 +104,7 @@ if app is not None:
         model = data.get("model")
         language = data.get("language")
         output_format = data.get("format", "markdown")
-        # Accept API key via JSON or Authorization header (fall back to X-API-Key for backward compatibility)
-        api_key = data.get("api_key") or request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
+        api_key = _get_api_key(data)
         if args.debug:
             masked = (api_key[:4] + "...") if api_key else "None"
             app.logger.debug("OCR request headers: %s", dict(request.headers))
@@ -136,10 +144,7 @@ if app is not None:
 
     @app.get("/health")
     def health():
-        api_key = request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
+        api_key = _get_api_key()
         masked = (api_key[:4] + "...") if api_key else "None"
         app.logger.info("Health check, api key: %s", masked)
         if not api_key:
@@ -170,16 +175,13 @@ if app is not None:
         Propagates Authorization and X-API-Key headers from the client and logs
         the upstream response when running with --debug to aid troubleshooting.
         """
-        api_key = request.headers.get("X-API-Key")
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
-        headers = {}
-        if api_key:
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "X-API-Key": api_key,
-            }
+        api_key = _get_api_key()
+        if not api_key:
+            return jsonify({"error": "missing api key"}), 401
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,
+        }
         url = f"https://api.mistral.ai/v1/{path}"
         try:
             if request.method == "GET":
