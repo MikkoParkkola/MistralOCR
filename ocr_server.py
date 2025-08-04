@@ -99,17 +99,27 @@ if Flask is not None:
     def _build_upstream_headers(api_key: str) -> dict[str, str]:
         """Return headers forwarded to the Mistral API.
 
-        The middleware should mimic the client's request closely.  Previously
-        we injected default ``Origin``/``Referer``/``User-Agent`` values which
-        in some environments caused the upstream API to reject the request with
-        ``403``.  Instead, only forward the headers the client actually
-        provided and otherwise rely on ``requests``' defaults.
+        In practice the safest behaviour is to mirror the client's request
+        as closely as possible.  Some API gateways apply strict checks on
+        seemingly irrelevant headers such as ``User-Agent`` or ``Accept`` and
+        respond with ``403`` when they do not resemble a browser request.  The
+        original implementation only forwarded a small, hand picked set of
+        headers which meant the upstream call looked unlike the browser's
+        direct call, leading to the persistent 403 responses seen by users.
+
+        This helper copies *all* incoming headers except for hop-by-hop ones
+        that are either meaningless or actively harmful when sent upstream.
+        The Authorization headers are rebuilt from the parsed API key to avoid
+        accidentally forwarding whitespace or other artefacts.
         """
 
-        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
-        for name in ("Origin", "Referer", "User-Agent"):
-            if name in request.headers:
-                headers[name] = request.headers[name]
+        excluded = {"host", "content-length", "content-encoding", "connection"}
+        headers = {
+            k: v for k, v in request.headers.items() if k.lower() not in excluded
+        }
+        # Normalise auth headers so any surrounding whitespace is removed
+        headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-API-Key"] = api_key
         return headers
 
 if app is not None:
@@ -183,7 +193,10 @@ if app is not None:
             app.logger.error(
                 "Health upstream failure: %s %s", resp.status_code, snippet
             )
-            return jsonify({"status": "unauthorized"}), resp.status_code
+            return (
+                jsonify({"status": "unauthorized", "body": snippet}),
+                resp.status_code,
+            )
         except Exception as exc:  # pragma: no cover - network issues
             app.logger.error("Health check error: %s", exc)
             return jsonify({"status": "upstream error"}), 502
@@ -201,18 +214,15 @@ if app is not None:
         headers = _build_upstream_headers(api_key)
         url = f"https://api.mistral.ai/v1/{path}"
         try:
-            if request.method == "GET":
-                upstream = requests.get(
-                    url, headers=headers, timeout=10, proxies={}
-                )
-            else:
-                upstream = requests.post(
-                    url,
-                    data=request.get_data(),
-                    headers=headers,
-                    timeout=10,
-                    proxies={},
-                )
+            upstream = requests.request(
+                request.method,
+                url,
+                params=request.args,
+                data=request.get_data(),
+                headers=headers,
+                timeout=10,
+                proxies={},
+            )
             masked = (api_key[:4] + "...") if api_key else "None"
             snippet = upstream.text[:200]
             app.logger.info(
@@ -223,6 +233,11 @@ if app is not None:
                 upstream.status_code,
                 snippet,
             )
+            if upstream.status_code in {401, 403} and not upstream.content:
+                return (
+                    jsonify({"error": "unauthorized", "body": snippet}),
+                    upstream.status_code,
+                )
             return (
                 upstream.content,
                 upstream.status_code,
