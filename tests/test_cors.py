@@ -23,3 +23,51 @@ def test_health_allows_extension_origin():
     allow_headers = resp.headers.get('Access-Control-Allow-Headers', '')
     assert 'Authorization' in allow_headers
     assert 'X-API-Key' in allow_headers
+
+
+def test_health_forwards_origin_header(monkeypatch):
+    captured = {}
+
+    def fake_get(url, headers, timeout):
+        captured['headers'] = headers
+        class Resp:
+            status_code = 200
+            text = 'ok'
+        return Resp()
+
+    monkeypatch.setattr(server.requests, 'get', fake_get)
+    client = server.app.test_client()
+    origin = 'chrome-extension://abc'
+    resp = client.get(
+        '/health',
+        headers={
+            'Authorization': 'Bearer test',
+            'X-API-Key': 'test',
+            'Origin': origin,
+            'Referer': origin,
+        },
+    )
+    assert resp.status_code == 200
+    assert captured['headers']['Origin'] == origin
+    assert captured['headers']['Referer'] == origin
+
+
+def test_health_adds_default_origin(monkeypatch):
+    captured = {}
+
+    def fake_get(url, headers, timeout):
+        captured['headers'] = headers
+        class Resp:
+            status_code = 200
+            text = 'ok'
+        return Resp()
+
+    monkeypatch.setattr(server.requests, 'get', fake_get)
+    client = server.app.test_client()
+    resp = client.get(
+        '/health',
+        headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
+    )
+    assert resp.status_code == 200
+    assert captured['headers']['Origin'] == 'chrome-extension://mistral-ocr'
+    assert captured['headers']['Referer'] == 'chrome-extension://mistral-ocr'

@@ -95,6 +95,32 @@ if Flask is not None:
             return auth_header[7:]
         return request.headers.get("X-API-Key")
 
+    def _build_upstream_headers(api_key: str) -> dict[str, str]:
+        """Return headers forwarded to the Mistral API.
+
+        The browser extension sends additional headers such as ``Origin`` and
+        ``Referer`` when talking to the upstream API directly.  Some endpoints
+        expect these headers to be present, so the middleware mirrors them when
+        proxying requests.
+        """
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,
+            # Some upstream endpoints reject requests without these headers
+            # even if the API key is valid.  When the browser extension calls
+            # the middleware from a background context it may omit them, so we
+            # provide sensible defaults that resemble the direct extension
+            # requests.
+            "Origin": request.headers.get("Origin")
+            or "chrome-extension://mistral-ocr",
+            "Referer": request.headers.get("Referer")
+            or "chrome-extension://mistral-ocr",
+            "User-Agent": request.headers.get("User-Agent")
+            or "MistralOCR/1.0",
+        }
+        return headers
+
 if app is not None:
     @app.post("/ocr")
     def ocr():
@@ -149,7 +175,7 @@ if app is not None:
         app.logger.info("Health check, api key: %s", masked)
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
-        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
+        headers = _build_upstream_headers(api_key)
         try:
             resp = requests.get(
                 "https://api.mistral.ai/v1/models", headers=headers, timeout=5
@@ -178,10 +204,7 @@ if app is not None:
         api_key = _get_api_key()
         if not api_key:
             return jsonify({"error": "missing api key"}), 401
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "X-API-Key": api_key,
-        }
+        headers = _build_upstream_headers(api_key)
         url = f"https://api.mistral.ai/v1/{path}"
         try:
             if request.method == "GET":
