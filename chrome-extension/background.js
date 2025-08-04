@@ -169,7 +169,7 @@ async function getSettings() {
 }
 
 async function fetchAndOCR(tab, settings) {
-  const { apiKey, model, language, format } = settings;
+  const { apiKey, model, language } = settings;
   try {
     debugLog("Fetching tab for OCR", tab.url);
     const resp = await fetch(tab.url, { credentials: "omit" });
@@ -177,22 +177,23 @@ async function fetchAndOCR(tab, settings) {
     const arrayBuffer = await blob.arrayBuffer();
     const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
     const dataUrl = `data:${blob.type || "application/octet-stream"};base64,${base64}`;
-    const headers = { "Content-Type": "application/json" };
-    if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
-      headers["X-API-Key"] = apiKey;
-    }
+    const headers = buildAuthHeaders(apiKey, true);
+    headers["Content-Type"] = "application/json";
+    const document = blob.type.startsWith("image/")
+      ? { type: "image_url", image_url: { url: dataUrl } }
+      : { type: "document_url", document_url: dataUrl };
+    const body = { document, model, language };
     debugLog("OCR request", {
-      url: "http://127.0.0.1:5000/ocr",
+      url: "https://api.mistral.ai/v1/ocr",
       headers: scrubHeaders(headers),
-      body: { model, language, format, fileLength: dataUrl.length },
+      body: { ...body, document: "<omitted>" },
     });
     const ocrResp = await fetchWithRetry(
-      "http://127.0.0.1:5000/ocr",
+      "https://api.mistral.ai/v1/ocr",
       {
         method: "POST",
         headers,
-        body: JSON.stringify({ file: dataUrl, model, language, format }),
+        body: JSON.stringify(body),
         timeout: 15000,
       },
       2
@@ -209,7 +210,15 @@ async function fetchAndOCR(tab, settings) {
       errorLog("Failed to parse OCR response", e);
       return "";
     }
-    const result = data.text || data.markdown || "";
+    let result = "";
+    if (Array.isArray(data.pages)) {
+      result = data.pages
+        .map((p) => p.markdown || p.text || "")
+        .join("\n\n");
+    }
+    if (!result) {
+      result = data.text || data.markdown || "";
+    }
     debugLog("OCR result", result);
     return result;
   } catch (e) {
@@ -320,32 +329,6 @@ async function runTests() {
     debugLog("Content script test error", e);
   }
 
-  let serverReachable = false;
-  try {
-    const headers = buildAuthHeaders(apiKey, true);
-    log("runTests: health check request", {
-      url: "http://127.0.0.1:5000/health",
-      headers: scrubHeaders(headers),
-    });
-    const health = await fetchWithRetry(
-      "http://127.0.0.1:5000/health",
-      { headers, timeout: 5000 },
-      1
-    );
-    serverReachable = true;
-    log("runTests: health check response", { status: health.status });
-    if (health.status === 200) {
-      results.push("Middleware reachable");
-    } else if (health.status === 401) {
-      results.push("Middleware missing API key");
-    } else {
-      results.push(`Middleware error: ${health.status}`);
-    }
-  } catch (e) {
-    results.push("Middleware unreachable");
-    errorLog("Health check failed", e);
-  }
-
   let apiReachable = false;
   let apiAuthorized = false;
   let modelsListed = false;
@@ -406,7 +389,6 @@ async function runTests() {
   const passed =
     apiKeyOk &&
     contentOk &&
-    serverReachable &&
     apiReachable &&
     apiAuthorized &&
     modelsListed;
