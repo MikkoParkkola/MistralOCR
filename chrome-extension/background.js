@@ -324,8 +324,9 @@ async function runTests() {
       serverAuthorized = true;
       results.push("Middleware authorized");
     } else if (health.status === 401 || health.status === 403) {
-      results.push(`Middleware unauthorized: ${health.status}`);
-      errorLog("Middleware unauthorized", body);
+      const snippet = body.slice(0, 100);
+      results.push(`Middleware unauthorized: ${health.status} ${snippet}`);
+      errorLog("Middleware unauthorized", { status: health.status, body });
     } else {
       results.push(`Middleware error: ${health.status}`);
       errorLog("Middleware error", health.status, body);
@@ -357,6 +358,7 @@ async function runTests() {
         1
       );
     apiReachable = true;
+    results.push("Mistral API reachable");
     const body = await resp.text();
     log("runTests: Mistral API response", {
       status: resp.status,
@@ -379,8 +381,9 @@ async function runTests() {
         errorLog("Parsing models list failed", e);
       }
     } else if (resp.status === 401 || resp.status === 403) {
-      results.push(`Mistral API unauthorized: ${resp.status}`);
-      errorLog("Mistral API unauthorized", body);
+      const snippet = body.slice(0, 100);
+      results.push(`Mistral API unauthorized: ${resp.status} ${snippet}`);
+      errorLog("Mistral API unauthorized", { status: resp.status, body });
     } else {
       results.push(`Mistral API error: ${resp.status}`);
       errorLog("Mistral API error", resp.status, body);
@@ -436,8 +439,9 @@ async function runTests() {
           errorLog("Parsing middleware models failed", e);
         }
       } else if (mResp.status === 401 || mResp.status === 403) {
-        results.push(`Middleware unauthorized: ${mResp.status}`);
-        errorLog("Middleware models unauthorized", mResp.status, mBody);
+        const snippet = mBody.slice(0, 100);
+        results.push(`Middleware unauthorized: ${mResp.status} ${snippet}`);
+        errorLog("Middleware models unauthorized", { status: mResp.status, body: mBody });
       } else {
         results.push(`Middleware models error: ${mResp.status}`);
         errorLog("Middleware models error", mResp.status, mBody);

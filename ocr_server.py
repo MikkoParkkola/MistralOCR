@@ -126,6 +126,50 @@ if app is not None:
         except Exception as exc:  # pragma: no cover - network issues
             app.logger.error("Health check error: %s", exc)
             return jsonify({"status": "upstream error"}), 502
+
+    @app.route("/v1/<path:path>", methods=["GET", "POST"])
+    def proxy_v1(path: str):
+        """Forward /v1/* requests to the official Mistral API.
+
+        Propagates Authorization and X-API-Key headers from the client and logs
+        the upstream response when running with --debug to aid troubleshooting.
+        """
+        api_key = request.headers.get("X-API-Key")
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]
+        headers = {}
+        if api_key:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "X-API-Key": api_key,
+            }
+        url = f"https://api.mistral.ai/v1/{path}"
+        try:
+            if request.method == "GET":
+                upstream = requests.get(url, headers=headers, timeout=10)
+            else:
+                upstream = requests.post(
+                    url, data=request.get_data(), headers=headers, timeout=10
+                )
+            if args.debug:
+                masked = (api_key[:4] + "...") if api_key else "None"
+                app.logger.debug(
+                    "Proxy %s %s key=%s status=%s body=%s",
+                    request.method,
+                    url,
+                    masked,
+                    upstream.status_code,
+                    upstream.text,
+                )
+            return (
+                upstream.content,
+                upstream.status_code,
+                {k: v for k, v in upstream.headers.items()},
+            )
+        except Exception as exc:  # pragma: no cover - network issues
+            app.logger.error("Proxy error: %s", exc)
+            return jsonify({"error": "upstream error"}), 502
 else:
     def ocr():  # type: ignore
         raise ModuleNotFoundError("flask not installed")
