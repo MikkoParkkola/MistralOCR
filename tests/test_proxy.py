@@ -51,7 +51,7 @@ def test_proxy_forwards_origin_header(monkeypatch):
     assert captured['headers']['Referer'] == origin
 
 
-def test_proxy_adds_default_origin(monkeypatch):
+def test_proxy_omits_origin_when_missing(monkeypatch):
     captured = {}
 
     def fake_get(url, headers, timeout):
@@ -70,5 +70,5 @@ def test_proxy_adds_default_origin(monkeypatch):
         headers={'Authorization': 'Bearer test', 'X-API-Key': 'test'},
     )
     assert resp.status_code == 200
-    assert captured['headers']['Origin'] == 'chrome-extension://mistral-ocr'
-    assert captured['headers']['Referer'] == 'chrome-extension://mistral-ocr'
+    assert 'Origin' not in captured['headers']
+    assert 'Referer' not in captured['headers']

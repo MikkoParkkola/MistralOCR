@@ -98,27 +98,15 @@ if Flask is not None:
     def _build_upstream_headers(api_key: str) -> dict[str, str]:
         """Return headers forwarded to the Mistral API.
 
-        The browser extension sends additional headers such as ``Origin`` and
-        ``Referer`` when talking to the upstream API directly.  Some endpoints
-        expect these headers to be present, so the middleware mirrors them when
-        proxying requests.
+        Only propagate ``Origin``/``Referer``/``User-Agent`` if the client
+        supplied them.  Earlier versions invented default values which caused
+        the upstream API to reject requests from some environments.
         """
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "X-API-Key": api_key,
-            # Some upstream endpoints reject requests without these headers
-            # even if the API key is valid.  When the browser extension calls
-            # the middleware from a background context it may omit them, so we
-            # provide sensible defaults that resemble the direct extension
-            # requests.
-            "Origin": request.headers.get("Origin")
-            or "chrome-extension://mistral-ocr",
-            "Referer": request.headers.get("Referer")
-            or "chrome-extension://mistral-ocr",
-            "User-Agent": request.headers.get("User-Agent")
-            or "MistralOCR/1.0",
-        }
+        headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
+        for hdr in ("Origin", "Referer", "User-Agent"):
+            if value := request.headers.get(hdr):
+                headers[hdr] = value
         return headers
 
 if app is not None:
