@@ -48,9 +48,9 @@ if Flask is not None:
     CORS(app)
     if args.debug:
         logging.basicConfig(level=logging.DEBUG, format="mistralocr: %(message)s")
-        app.logger.setLevel(logging.DEBUG)
     else:
-        logging.basicConfig(format="mistralocr: %(message)s")
+        logging.basicConfig(level=logging.INFO, format="mistralocr: %(message)s")
+    app.logger.setLevel(logging.getLogger().level)
 
 if app is not None:
     @app.post("/ocr")
@@ -109,9 +109,8 @@ if app is not None:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             api_key = auth_header[7:]
-        if args.debug:
-            masked = (api_key[:4] + "...") if api_key else "None"
-            app.logger.debug("Health check, api key: %s", masked)
+        masked = (api_key[:4] + "...") if api_key else "None"
+        app.logger.info("Health check, api key: %s", masked)
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
         headers = {"Authorization": f"Bearer {api_key}", "X-API-Key": api_key}
@@ -119,9 +118,15 @@ if app is not None:
             resp = requests.get(
                 "https://api.mistral.ai/v1/models", headers=headers, timeout=5
             )
+            snippet = resp.text[:200]
+            app.logger.info(
+                "Health upstream response: %s %s", resp.status_code, snippet
+            )
             if resp.status_code == 200:
                 return jsonify({"status": "ok"})
-            app.logger.error("Health upstream failure: %s %s", resp.status_code, resp.text)
+            app.logger.error(
+                "Health upstream failure: %s %s", resp.status_code, snippet
+            )
             return jsonify({"status": "unauthorized"}), resp.status_code
         except Exception as exc:  # pragma: no cover - network issues
             app.logger.error("Health check error: %s", exc)
@@ -152,16 +157,16 @@ if app is not None:
                 upstream = requests.post(
                     url, data=request.get_data(), headers=headers, timeout=10
                 )
-            if args.debug:
-                masked = (api_key[:4] + "...") if api_key else "None"
-                app.logger.debug(
-                    "Proxy %s %s key=%s status=%s body=%s",
-                    request.method,
-                    url,
-                    masked,
-                    upstream.status_code,
-                    upstream.text,
-                )
+            masked = (api_key[:4] + "...") if api_key else "None"
+            snippet = upstream.text[:200]
+            app.logger.info(
+                "Proxy %s %s key=%s status=%s body=%s",
+                request.method,
+                url,
+                masked,
+                upstream.status_code,
+                snippet,
+            )
             return (
                 upstream.content,
                 upstream.status_code,

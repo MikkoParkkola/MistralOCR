@@ -11,12 +11,29 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
+async function forwardConsole(level, args) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.id !== undefined) {
+      chrome.tabs.sendMessage(
+        tab.id,
+        { type: "console", level, args },
+        () => void chrome.runtime.lastError
+      );
+    }
+  } catch (_e) {
+    // ignore
+  }
+}
+
 function log(...args) {
   console.log("mistralocr:", ...args);
+  forwardConsole("log", args);
 }
 
 function errorLog(...args) {
   console.error("mistralocr:", ...args);
+  forwardConsole("error", args);
 }
 
 function debugLog(...args) {

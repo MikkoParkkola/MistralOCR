@@ -70,6 +70,11 @@ function getSelectionMarkdown() {
 }
 
 chrome.runtime.onMessage.addListener((req, sender, sendResponse) => {
+  if (req.type === "console") {
+    const fn = req.level === "error" ? console.error : console.log;
+    fn("mistralocr:", ...(req.args || []));
+    return;
+  }
   console.log("mistralocr: content script request", req.type);
   try {
     if (req.type === "getPage") {
