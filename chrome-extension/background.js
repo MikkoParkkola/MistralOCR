@@ -312,19 +312,19 @@ async function runTests() {
       status: health.status,
       body,
     });
-    results.push("OCR server reachable");
+    results.push("Middleware reachable");
     if (health.status === 200) {
       serverAuthorized = true;
-      results.push("OCR server authorized");
+      results.push("Middleware authorized");
     } else if (health.status === 401 || health.status === 403) {
-      results.push(`OCR server unauthorized: ${health.status}`);
-      errorLog("OCR server unauthorized", body);
+      results.push(`Middleware unauthorized: ${health.status}`);
+      errorLog("Middleware unauthorized", body);
     } else {
-      results.push(`OCR server error: ${health.status}`);
-      errorLog("OCR server error", health.status, body);
+      results.push(`Middleware error: ${health.status}`);
+      errorLog("Middleware error", health.status, body);
     }
   } catch (e) {
-    results.push("OCR server unreachable");
+    results.push("Middleware unreachable");
     errorLog("Health check failed", e);
   }
 
@@ -336,16 +336,17 @@ async function runTests() {
     if (apiKey) {
       headers["Authorization"] = `Bearer ${apiKey}`;
       headers["X-API-Key"] = apiKey;
+      results.push("API request headers set");
+    } else {
+      results.push("API request missing key headers");
     }
+    const apiUrl = "https://api.mistral.ai/v1/models";
+    results.push(`Using API endpoint ${apiUrl}`);
     log("runTests: Mistral API request", {
-      url: "https://api.mistral.ai/v1/models",
+      url: apiUrl,
       headers: scrubHeaders(headers),
     });
-    const resp = await fetchWithRetry(
-      "https://api.mistral.ai/v1/models",
-      { headers, timeout: 5000 },
-      1
-    );
+    const resp = await fetchWithRetry(apiUrl, { headers, timeout: 5000 }, 1);
     apiReachable = true;
     const body = await resp.text();
     log("runTests: Mistral API response", {
@@ -354,6 +355,7 @@ async function runTests() {
     });
     if (resp.status === 200) {
       apiAuthorized = true;
+      results.push("Mistral API authorized");
       try {
         const data = JSON.parse(body);
         if (Array.isArray(data.data) && data.data.length > 0) {
@@ -405,7 +407,7 @@ async function runTests() {
           const data = JSON.parse(mBody);
           if (Array.isArray(data.data) && data.data.length > 0) {
             middlewareModelsOk = true;
-            results.push("Middleware returned models");
+            results.push(`Middleware models listed: ${data.data.length}`);
           } else {
             results.push("Middleware returned no models");
           }
@@ -413,6 +415,9 @@ async function runTests() {
           results.push("Middleware models parse failed");
           errorLog("Parsing middleware models failed", e);
         }
+      } else if (mResp.status === 401 || mResp.status === 403) {
+        results.push(`Middleware unauthorized: ${mResp.status}`);
+        errorLog("Middleware models unauthorized", mResp.status, mBody);
       } else {
         results.push(`Middleware models error: ${mResp.status}`);
         errorLog("Middleware models error", mResp.status, mBody);
