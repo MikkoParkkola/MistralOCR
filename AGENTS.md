@@ -17,3 +17,12 @@ override:
 - Use `pytest -m "not integration"` by default to avoid network in CI.
 - Consider adding simple CLI smoke tests in CI (no network).
 
+
+
+---
+
+## Model Rate Limits
+
+Please be aware that all cloud-based models (including Codex, Claude, Gemini, etc.) are subject to rate limits. If a model becomes unresponsive, it is likely that it has hit a rate limit. These limits will reset after a certain period of time.
+
+The only model not subject to rate limits is the locally-run Ollama.
