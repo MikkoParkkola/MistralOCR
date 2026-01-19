@@ -1,11 +1,11 @@
 import base64
-import json
-from pathlib import Path
 import importlib.util
-import types
-import sys
-import pytest
+import json
 import logging
+import sys
+from pathlib import Path
+
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "mistral-ocr.py"
 spec = importlib.util.spec_from_file_location("mocr", MODULE_PATH)

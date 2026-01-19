@@ -1,11 +1,11 @@
-from pathlib import Path
 import importlib.util
-import pytest
+import sys
+from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "mistral-ocr.py"
 spec = importlib.util.spec_from_file_location("mocr", MODULE_PATH)
 mod = importlib.util.module_from_spec(spec)
-import sys
+
 sys.modules[spec.name] = mod
 assert spec.loader  # for type checkers
 spec.loader.exec_module(mod)

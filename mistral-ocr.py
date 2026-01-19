@@ -3,27 +3,29 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import configparser
+import glob
+import json
+import logging
+import mimetypes
+import time
 from dataclasses import dataclass
 from getpass import getpass
-import glob
-import base64
-import logging
-import json
-import time
 from pathlib import Path
 from typing import List, Optional, Tuple
-import mimetypes
 
 try:  # pragma: no cover - optional dependency
     import requests  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't installed
-    import importlib.util, sys
+    import importlib.util
+    import sys
     _compat_path = Path(__file__).with_name("compat_requests.py")
     _spec = importlib.util.spec_from_file_location("compat_requests", _compat_path)
     compat_requests = importlib.util.module_from_spec(_spec)
     sys.modules[_spec.name] = compat_requests
-    assert _spec.loader
+    if _spec.loader is None:
+        raise RuntimeError("Failed to load compat_requests module")
     _spec.loader.exec_module(compat_requests)  # type: ignore
     requests = compat_requests  # type: ignore
 
@@ -127,7 +129,11 @@ def _summarize_error(data: object) -> str:
                 continue
             msg = item.get("msg")
             loc = item.get("loc")
-            loc_str = "".join([str(x) + "." for x in loc])[:-1] if isinstance(loc, list) else ""
+            loc_str = (
+                "".join([str(x) + "." for x in loc])[:-1]
+                if isinstance(loc, list)
+                else ""
+            )
             if msg and loc_str:
                 parts.append(f"{loc_str}: {msg}")
             elif msg:
@@ -172,7 +178,13 @@ def _prepare_request(
         payload["language"] = language
     payload_log = json.loads(json.dumps(payload))  # deep copy
     _scrub_files(payload_log)
-    logging.debug("Request headers: %s", {k: (v if k != "Authorization" else v[:10] + "...") for k, v in headers.items()})
+    logging.debug(
+            "Request headers: %s",
+            {
+                k: (v if k != "Authorization" else v[:10] + "...")
+                for k, v in headers.items()
+            }
+        )
     logging.debug("Request payload: %s", payload_log)
     return headers, payload
 
@@ -184,7 +196,7 @@ def _send_request(headers: dict, payload: dict) -> "requests.Response":
     logging.debug("Response status: %s", resp.status_code)
     try:
         logging.debug("Response headers: %s", dict(resp.headers))
-    except Exception:  # pragma: no cover - headers may be missing
+    except (AttributeError, TypeError):  # pragma: no cover - headers may be missing
         pass
     logging.debug("Response body: %s", resp.text)
     return resp
@@ -222,7 +234,7 @@ def extract_text(
             _scrub_files(data)
             summary = _summarize_error(data)
             body = summary or json.dumps(data)
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             pass
         if len(body) > 1000:
             body = body[:1000] + "... [truncated]"
@@ -280,10 +292,18 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process documents with Mistral OCR")
     parser.add_argument("patterns", nargs="+", help="Input file patterns (e.g. *.pdf)")
     parser.add_argument("--api-key", help="Mistral API key")
-    parser.add_argument("--output-format", default=None, help="Output format, default from config")
+    parser.add_argument(
+        "--output-format",
+        default=None,
+        help="Output format, default from config"
+    )
     parser.add_argument("--language", default=None, help="Language hint")
     parser.add_argument("--model", default=None, help="Model name to use")
-    parser.add_argument("--config-path", default=str(CONFIG_PATH), help="Path to configuration file")
+    parser.add_argument(
+        "--config-path",
+        default=str(CONFIG_PATH),
+        help="Path to configuration file"
+    )
     parser.add_argument("--log-level", default=None, help="Logging level")
     return parser.parse_args(args)
 
@@ -352,7 +372,8 @@ def main(argv: List[str] | None = None) -> int:
         except OCRException as exc:
             logging.error("Failed to process %s: %s", file_path, exc)
             logging.error(
-                "Stopping due to the error above. Verify the file is valid and your API key is correct."
+                "Stopping due to the error above. "
+                "Verify the file is valid and your API key is correct."
             )
             return 1
         except Exception as exc:  # pragma: no cover - unexpected errors

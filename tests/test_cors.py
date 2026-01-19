@@ -1,7 +1,8 @@
-import pytest
 import importlib.util
 import sys
 from pathlib import Path
+
+import pytest
 
 # Import the server module without requiring it to be on PYTHONPATH.
 MODULE_PATH = Path(__file__).resolve().parents[1] / "ocr_server.py"

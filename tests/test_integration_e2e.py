@@ -1,8 +1,9 @@
 import base64
-import os
-from pathlib import Path
 import importlib.util
+import os
 import sys
+from pathlib import Path
+
 import pytest
 
 # Import ocr_server module
@@ -38,6 +39,8 @@ def test_server_end_to_end(tmp_path: Path):
         headers={"Authorization": f"Bearer {api_key}"},
     )
     if resp.status_code != 200:
-        pytest.skip(f"OCR call failed: {resp.status_code} {resp.get_data(as_text=True)}")
+        pytest.skip(
+            f"OCR call failed: {resp.status_code} {resp.get_data(as_text=True)}"
+        )
     data = resp.get_json()
     assert "markdown" in data and isinstance(data["markdown"], str)

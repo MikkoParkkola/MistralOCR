@@ -16,9 +16,11 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "--cov=. --cov-fail-under=80"
 
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
 [tool.ruff]
 line-length = 88
-select = ["E", "F", "I"]
 
 [tool.bandit]
 skips = ["B101"]

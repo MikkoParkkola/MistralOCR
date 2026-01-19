@@ -1,11 +1,12 @@
-from pathlib import Path
 import configparser
 import importlib.util
+import sys
+from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "mistral-ocr.py"
 spec = importlib.util.spec_from_file_location("mocr", MODULE_PATH)
 cfg = importlib.util.module_from_spec(spec)
-import sys
+
 sys.modules[spec.name] = cfg
 assert spec.loader
 spec.loader.exec_module(cfg)

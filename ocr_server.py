@@ -1,16 +1,16 @@
 """Simple HTTP server exposing Mistral OCR via /ocr endpoint."""
 
-import base64
-import tempfile
-from pathlib import Path
-import importlib.util
-import sys
 import argparse
+import base64
+import importlib.util
 import logging
+import sys
+import tempfile
 import time
+from pathlib import Path
 
 try:  # pragma: no cover - optional dependency
-    from flask import Flask, request, jsonify  # type: ignore
+    from flask import Flask, jsonify, request  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - allow import without flask
     Flask = None  # type: ignore[assignment]
     request = None  # type: ignore[assignment]
@@ -34,7 +34,8 @@ MODULE_PATH = Path(__file__).resolve().parent / "mistral-ocr.py"
 spec = importlib.util.spec_from_file_location("mocr", MODULE_PATH)
 mocr = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = mocr
-assert spec.loader
+if spec.loader is None:
+    raise RuntimeError("Failed to load mistral-ocr module")
 spec.loader.exec_module(mocr)
 
 parser = argparse.ArgumentParser(description="Mistral OCR server")
