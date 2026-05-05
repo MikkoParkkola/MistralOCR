@@ -40,16 +40,16 @@ def test_extract_text_payload(monkeypatch, tmp_path):
             }
 
     def fake_post(url, headers=None, json=None, timeout=60):
-        captured['payload'] = json
+        captured["payload"] = json
         return Resp()
 
-    monkeypatch.setattr(mod.requests, 'post', fake_post)
-    mod.extract_text(file, 'k')
-    doc = captured['payload']['document']
-    assert doc['type'] == 'document_url'
-    assert doc['document_url'].startswith('data:application/pdf;base64,')
-    assert doc['document_url'].endswith(base64.b64encode(data).decode())
-    assert captured['payload']['model'] == mod.DEFAULT_MODEL
+    monkeypatch.setattr(mod.requests, "post", fake_post)
+    mod.extract_text(file, "k")
+    doc = captured["payload"]["document"]
+    assert doc["type"] == "document_url"
+    assert doc["document_url"].startswith("data:application/pdf;base64,")
+    assert doc["document_url"].endswith(base64.b64encode(data).decode())
+    assert captured["payload"]["model"] == mod.DEFAULT_MODEL
 
 
 def test_extract_text_error_truncated(monkeypatch, tmp_path):
@@ -127,9 +127,7 @@ def test_extract_text_error_message_detail(monkeypatch, tmp_path):
                     "type": "missing",
                     "loc": ["body", "document"],
                     "msg": "Field required",
-                    "input": {
-                        "document_url": f"data:application/pdf;base64,{encoded}"
-                    },
+                    "input": {"document_url": f"data:application/pdf;base64,{encoded}"},
                 }
             ]
         },

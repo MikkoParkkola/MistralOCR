@@ -18,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - allow import without flask
     def jsonify(obj):  # type: ignore[override]
         raise ModuleNotFoundError("flask not installed")
 
+
 # ``flask_cors`` is optional.  In some environments it rejects the
 # ``chrome-extension://`` origin used by the browser extension which results
 # in confusing 403 responses.  To keep behaviour consistent we do not depend
@@ -81,7 +82,9 @@ if Flask is not None:
         key = request.headers.get("X-API-Key")
         return key.strip() if key else None
 
+
 if app is not None:
+
     @app.post("/ocr")
     def ocr():
         data = request.get_json(force=True)
@@ -144,9 +147,12 @@ if app is not None:
         if not api_key:
             return jsonify({"status": "missing api key"}), 401
         return jsonify({"status": "ok"})
+
 else:
+
     def ocr():  # type: ignore
         raise ModuleNotFoundError("flask not installed")
+
     def health():  # type: ignore
         raise ModuleNotFoundError("flask not installed")
 
@@ -185,7 +191,8 @@ def _extract_with_retry(
             if "401" in str(exc) or "403" in str(exc) or attempt == retries:
                 raise
             app.logger.warning("OCR attempt %d failed: %s", attempt + 1, exc)
-            time.sleep(backoff * 2 ** attempt)
+            time.sleep(backoff * 2**attempt)
+
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=args.debug)

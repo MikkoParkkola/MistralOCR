@@ -20,6 +20,7 @@ try:  # pragma: no cover - optional dependency
 except ModuleNotFoundError:  # pragma: no cover - fallback when requests isn't installed
     import importlib.util
     import sys
+
     _compat_path = Path(__file__).with_name("compat_requests.py")
     _spec = importlib.util.spec_from_file_location("compat_requests", _compat_path)
     compat_requests = importlib.util.module_from_spec(_spec)
@@ -179,12 +180,12 @@ def _prepare_request(
     payload_log = json.loads(json.dumps(payload))  # deep copy
     _scrub_files(payload_log)
     logging.debug(
-            "Request headers: %s",
-            {
-                k: (v if k != "Authorization" else v[:10] + "...")
-                for k, v in headers.items()
-            }
-        )
+        "Request headers: %s",
+        {
+            k: (v if k != "Authorization" else v[:10] + "...")
+            for k, v in headers.items()
+        },
+    )
     logging.debug("Request payload: %s", payload_log)
     return headers, payload
 
@@ -223,7 +224,7 @@ def extract_text(
             last_exc = exc
             if attempt == retries:
                 raise OCRException(f"Network error: {exc}") from exc
-            time.sleep(backoff * 2 ** attempt)
+            time.sleep(backoff * 2**attempt)
     else:  # pragma: no cover - loop didn't break
         raise OCRException(f"Network error: {last_exc}")
 
@@ -272,6 +273,7 @@ def extract_text(
 
 # ----------------------------- CLI ---------------------------------------
 
+
 class ColorFormatter(logging.Formatter):
     COLORS = {
         logging.DEBUG: "\033[36m",
@@ -293,16 +295,12 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("patterns", nargs="+", help="Input file patterns (e.g. *.pdf)")
     parser.add_argument("--api-key", help="Mistral API key")
     parser.add_argument(
-        "--output-format",
-        default=None,
-        help="Output format, default from config"
+        "--output-format", default=None, help="Output format, default from config"
     )
     parser.add_argument("--language", default=None, help="Language hint")
     parser.add_argument("--model", default=None, help="Model name to use")
     parser.add_argument(
-        "--config-path",
-        default=str(CONFIG_PATH),
-        help="Path to configuration file"
+        "--config-path", default=str(CONFIG_PATH), help="Path to configuration file"
     )
     parser.add_argument("--log-level", default=None, help="Logging level")
     return parser.parse_args(args)

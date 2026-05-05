@@ -17,6 +17,7 @@ spec.loader.exec_module(server)
 
 def _make_sample_image(tmp_path: Path) -> Path:
     from PIL import Image, ImageDraw
+
     path = tmp_path / "sample.png"
     img = Image.new("RGB", (120, 50), "white")
     ImageDraw.Draw(img).text((10, 10), "hello", fill="black")

@@ -17,20 +17,20 @@ pytestmark = pytest.mark.skipif(server.app is None, reason="Flask not installed"
 
 def test_health_allows_extension_origin():
     client = server.app.test_client()
-    resp = client.get('/health', headers={'Origin': 'chrome-extension://abc'})
+    resp = client.get("/health", headers={"Origin": "chrome-extension://abc"})
     # Missing API key should yield 401 but still include permissive CORS headers
     assert resp.status_code == 401
-    assert resp.headers.get('Access-Control-Allow-Origin') == '*'
-    allow_headers = resp.headers.get('Access-Control-Allow-Headers', '')
-    assert 'Authorization' in allow_headers
-    assert 'X-API-Key' in allow_headers
+    assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+    allow_headers = resp.headers.get("Access-Control-Allow-Headers", "")
+    assert "Authorization" in allow_headers
+    assert "X-API-Key" in allow_headers
 
 
 def test_options_preflight_returns_cors_headers():
     client = server.app.test_client()
-    resp = client.options('/health', headers={'Origin': 'chrome-extension://abc'})
+    resp = client.options("/health", headers={"Origin": "chrome-extension://abc"})
     assert resp.status_code == 204
-    assert resp.headers.get('Access-Control-Allow-Origin') == '*'
-    allow_headers = resp.headers.get('Access-Control-Allow-Headers', '')
-    assert 'Authorization' in allow_headers
-    assert 'X-API-Key' in allow_headers
+    assert resp.headers.get("Access-Control-Allow-Origin") == "*"
+    allow_headers = resp.headers.get("Access-Control-Allow-Headers", "")
+    assert "Authorization" in allow_headers
+    assert "X-API-Key" in allow_headers

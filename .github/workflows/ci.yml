@@ -18,7 +18,7 @@ jobs:
           pip install pytest pytest-cov ruff black bandit pip-audit
       - name: Lint
         run: |
-          ruff .
+          ruff check .
           black --check .
       - name: Test
         run: |
@@ -27,4 +27,3 @@ jobs:
         run: |
           bandit -r . || true
           pip-audit || true
-
