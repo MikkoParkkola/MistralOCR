@@ -27,3 +27,50 @@ jobs:
         run: |
           bandit -r . || true
           pip-audit || true
+
+  # Dependency-vulnerability gate: scans resolvable lockfiles against the OSV
+  # database on every PR and push, failing the build on any known, fixable vuln
+  # so a security fix lands with the change that introduces (or fails to bump
+  # past) it. This is the blocking dep-vuln gate; pip-audit in the job above runs
+  # with `|| true` and is non-blocking (advisory only). There is no release
+  # workflow in this repo, so this CI job IS the gate — no release backstop.
+  #
+  # The scan STEP is guarded: this repo currently ships NO lockfile (pure-stdlib
+  # runtime via the compat_requests.py shim; only loosely-pinned dev tools in
+  # pyproject.toml), so osv-scanner finds no package sources and a bare run would
+  # exit 128 and turn CI permanently red. The guard skips the scan when there is
+  # nothing to scan and auto-activates the instant a lockfile (requirements.txt,
+  # poetry.lock, uv.lock, Pipfile.lock, package-lock.json, ...) lands. Generate
+  # one with `uv lock` or `pip-compile` to give this gate real coverage.
+  # Accepted/unfixable vulns are time-boxed in .github/osv-scanner.toml.
+  osv-scan:
+    name: OSV vulnerability scan
+    runs-on: [self-hosted, linux, arm64, spark]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect dependency lockfiles
+        id: detect
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          found=
+          for f in **/requirements*.txt **/poetry.lock **/uv.lock **/pdm.lock \
+                   **/Pipfile.lock **/package-lock.json **/yarn.lock \
+                   **/pnpm-lock.yaml; do
+            found=true
+            echo "Found lockfile: $f"
+          done
+          if [ -n "$found" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No dependency lockfile found; skipping OSV scan. Generate one (uv lock / pip-compile) to enable the gate."
+          fi
+      - name: Scan dependencies against OSV
+        if: steps.detect.outputs.found == 'true'
+        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --config=.github/osv-scanner.toml
+            --recursive
+            ./
