@@ -27,3 +27,77 @@ jobs:
         run: |
           bandit -r . || true
           pip-audit || true
+
+  # Dependency-vulnerability gate: scans resolvable lockfiles against the OSV
+  # database on every PR and push, failing the build on any known, fixable vuln
+  # so a security fix lands with the change that introduces (or fails to bump
+  # past) it. This is the blocking dep-vuln gate; pip-audit in the job above runs
+  # with `|| true` and is non-blocking (advisory only). There is no release
+  # workflow in this repo, so this CI job IS the gate — no release backstop.
+  #
+  # The scan STEP is guarded: this repo currently ships NO lockfile (pure-stdlib
+  # runtime via the compat_requests.py shim; only loosely-pinned dev tools in
+  # pyproject.toml), so osv-scanner finds no package sources and a bare run would
+  # exit 128 and turn CI permanently red. The guard skips the scan when there is
+  # nothing to scan and auto-activates the instant a lockfile (requirements.txt,
+  # poetry.lock, uv.lock, Pipfile.lock, package-lock.json, ...) lands. Generate
+  # one with `uv lock` or `pip-compile` to give this gate real coverage.
+  # Accepted/unfixable vulns are time-boxed in .github/osv-scanner.toml.
+  osv-scan:
+    name: OSV vulnerability scan
+    runs-on: [self-hosted, linux, arm64, spark]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect dependency lockfiles
+        id: detect
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          found=
+          for f in **/requirements*.txt **/poetry.lock **/uv.lock **/pdm.lock \
+                   **/Pipfile.lock **/package-lock.json **/yarn.lock \
+                   **/pnpm-lock.yaml; do
+            found=true
+            echo "Found lockfile: $f"
+          done
+          if [ -n "$found" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No dependency lockfile found; skipping OSV scan. Generate one (uv lock / pip-compile) to enable the gate."
+          fi
+      - name: Install osv-scanner
+        # The osv-scanner-action Docker image is amd64-only and fails with
+        # `exec /bin/bash: exec format error` on this self-hosted ARM64 (spark)
+        # runner, so the gate never actually ran (false assurance). Install the
+        # arch-matched static binary directly instead. Pinned to v2.3.8 to match
+        # the version the action shipped.
+        if: steps.detect.outputs.found == 'true'
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL -o osv-scanner "https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_${arch}"
+          chmod +x osv-scanner
+          mv osv-scanner "$HOME/.local/bin/"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Scan dependencies against OSV
+        # Blocking: no `|| true`, no continue-on-error. Non-zero exit (vulns
+        # found) fails the gate. Scan args byte-identical to the prior
+        # osv-scanner-action config, plus `--no-resolve`: deps.dev (the
+        # transitive-resolution backend) is not reachable from the self-hosted
+        # spark runner, so transitive resolution errors out even on a clean
+        # tree. `--no-resolve` evaluates the direct/floor versions instead.
+        if: steps.detect.outputs.found == 'true'
+        shell: bash
+        run: |
+          osv-scanner \
+            --config=.github/osv-scanner.toml \
+            --no-resolve \
+            --recursive \
+            ./

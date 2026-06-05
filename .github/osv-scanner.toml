@@ -1,0 +1,51 @@
+# osv-scanner allowlist — the pressure valve for the CI dependency-vuln gate.
+#
+# The gate fails the build on ANY known, fixable vulnerability in a resolvable
+# dependency lockfile. It runs in ci.yml as the `osv-scan` job, on every PR and
+# push. There is no release/publish workflow in this repo, so the CI job IS the
+# gate — there is no separate release backstop to wire it into.
+#
+# CURRENT COVERAGE (verified by local run 2026-06-05): NONE.
+#   `osv-scanner --recursive ./` reports "No package sources found" (exit 128).
+#   This repo ships NO lockfile — no requirements.txt, poetry.lock, uv.lock,
+#   Pipfile.lock, or package-lock.json. The Python runtime is pure stdlib
+#   (urllib/json/base64 via the compat_requests.py shim — zero third-party
+#   runtime deps), and the only declared dependencies are dev tools loosely
+#   pinned in pyproject.toml's [project.optional-dependencies], which
+#   osv-scanner cannot resolve without a lockfile.
+#
+#   Because zero sources exist, the `osv-scan` job's scan STEP is guarded by a
+#   lockfile-detection step and SKIPS today (a bare run would exit 128 and turn
+#   CI permanently red — that is an outage, not a gate). The step auto-activates
+#   the instant a lockfile lands. To get real coverage, generate a lockfile as a
+#   follow-up:  `uv lock`  or  `pip-compile pyproject.toml -o requirements.txt`.
+#   osv-scanner then reads it and this gate starts biting.
+#
+# What osv-scanner reads when a lockfile exists: requirements.txt, poetry.lock,
+# Pipfile.lock, uv.lock, pdm.lock (Python) and package-lock.json / yarn.lock /
+# pnpm-lock.yaml (the chrome-extension is a plain MV3 extension with only a
+# manifest.json — no npm lockfile — so it is out of scope until one is added).
+#
+# NOT covered by osv-scanner: github-actions advisories (actions here use
+# floating @v4/@v5 tags; the osv-scan action itself is SHA-pinned) and SAST /
+# secrets / SBOM, which CodeQL, Semgrep, Gitleaks and the SBOM workflow already
+# handle. osv-scanner is the dependency-vulnerability layer specifically.
+#
+# Failing on any fixable vuln is intentional: a new build must include the
+# security fixes that are available. Renovate PROPOSES the bump PR; this gate
+# DISPOSES — it refuses to ship until the fix is merged.
+#
+# When a vulnerability has NO upstream fix yet, or is verified unreachable, it
+# would otherwise block every build indefinitely. Add a time-boxed exception
+# here instead of weakening the gate. Each entry MUST carry a reason and an
+# ignoreUntil review date — expired entries re-trigger the gate automatically.
+#
+# Format (https://google.github.io/osv-scanner/configuration/):
+#
+#   [[IgnoredVulns]]
+#   id = "PYSEC-2024-1234"
+#   ignoreUntil = 2026-07-01   # review by this date; after it the gate fires again
+#   reason = "No patched release upstream yet; not reachable from our code paths. Reviewed 2026-06-05 by <who>."
+#
+# Keep this list EMPTY unless a vuln genuinely has no fix. The right fix for a
+# fixable vuln is to bump the dependency, not to ignore it.
