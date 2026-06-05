@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint-test-security:
-    runs-on: [self-hosted, linux, arm64, spark]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,7 +45,7 @@ jobs:
   # Accepted/unfixable vulns are time-boxed in .github/osv-scanner.toml.
   osv-scan:
     name: OSV vulnerability scan
-    runs-on: [self-hosted, linux, arm64, spark]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Detect dependency lockfiles
