@@ -9,7 +9,7 @@ on:
 
 jobs:
   analyze:
-    runs-on: [self-hosted, linux, arm64, spark]
+    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
