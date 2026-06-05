@@ -66,11 +66,38 @@ jobs:
             echo "found=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No dependency lockfile found; skipping OSV scan. Generate one (uv lock / pip-compile) to enable the gate."
           fi
-      - name: Scan dependencies against OSV
+      - name: Install osv-scanner
+        # The osv-scanner-action Docker image is amd64-only and fails with
+        # `exec /bin/bash: exec format error` on this self-hosted ARM64 (spark)
+        # runner, so the gate never actually ran (false assurance). Install the
+        # arch-matched static binary directly instead. Pinned to v2.3.8 to match
+        # the version the action shipped.
         if: steps.detect.outputs.found == 'true'
-        uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
-        with:
-          scan-args: |-
-            --config=.github/osv-scanner.toml
-            --recursive
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          curl -fsSL -o osv-scanner "https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_${arch}"
+          chmod +x osv-scanner
+          mv osv-scanner "$HOME/.local/bin/"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Scan dependencies against OSV
+        # Blocking: no `|| true`, no continue-on-error. Non-zero exit (vulns
+        # found) fails the gate. Scan args byte-identical to the prior
+        # osv-scanner-action config, plus `--no-resolve`: deps.dev (the
+        # transitive-resolution backend) is not reachable from the self-hosted
+        # spark runner, so transitive resolution errors out even on a clean
+        # tree. `--no-resolve` evaluates the direct/floor versions instead.
+        if: steps.detect.outputs.found == 'true'
+        shell: bash
+        run: |
+          osv-scanner \
+            --config=.github/osv-scanner.toml \
+            --no-resolve \
+            --recursive \
             ./
