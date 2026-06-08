@@ -2,7 +2,7 @@
 name = "mistralocr"
 version = "0.0.0"
 description = "Tooling config for MistralOCR"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
 dev = [
